@@ -1,20 +1,20 @@
 # Lattice Party & Raid Frames
 
 ## Unreleased
-- Your per-character settings (profile, click-casting) can't end up under a nameless "Name-" entry when the game doesn't say the realm, as after today's WoW Forever client update: the realm then comes from your character. Nothing changes for characters whose settings were already found.
+- Fix: after the latest WoW Forever client update, your character's settings (profile, click-casting) could be saved under the wrong name. They now stay with your character.
 
 ## v0.8.0 (2026-11-21)
 - Names and health text stay readable on top of the big dispel icon (it used to cover them).
 - The leader crown sits beside the role icon instead of on top of it.
 - "AFK" and the health text no longer print over each other; the health text comes back as soon as the player is back.
-- Raids: a burst of roster changes refreshes the frames once instead of once per change, and health and range updates make no throwaway functions, so less memory churn in big groups.
+- Smoother in big raids: frames refresh once when lots of players join or leave, and use less memory.
 - The preview no longer shows auras or a dispel highlight on an offline player.
 - Settings search also finds sections: type export, import, preset, indicator, filter, profile or reset position.
 - Aura filters: one highlighted button (Always show); Add from text is a plain button. The dispel highlight's "How" is now "Frame color style".
 - Fix: if one change waiting for combat to end failed, the changes queued after it were skipped until the next fight.
 - An old "Lattice" folder that is turned off at login no longer reacts to game events for the rest of the session.
 - Hover-casting: new keys now cast on you when nobody fitting is under the mouse and you have no fitting target (friendly spells only). A new switch on the Hover-casting page, "New keys cast on me when nobody else fits", sets where a new key's "cast on me" starts. If you used Lattice before, it stays off for you, and the keys you already have don't change.
-- AI help works now: the AI help button in the settings window (or `/lattice ai`) copies a description of every setting for Claude or another AI, and `/lattice apply` takes its answer, shows every change first and only changes Lattice's settings. Anything else in the answer is skipped and shown in red. Changes made in combat wait until the fight is over.
+- AI help works now: the AI help button (or `/lattice ai`) gives you a description of every setting to paste into an AI chat assistant; paste its answer into `/lattice apply`, which shows every change before making it. Changes made in combat wait until the fight is over.
 - Settings can be changed from chat too: `/lattice layouts.raid.width 90`; `/lattice get` lists them all.
 
 ## v0.7.2 (2026-11-20)
@@ -89,7 +89,7 @@
 
 ## v0.4.3 (2026-11-15)
 
-- Fix: an error at login ("Button.lua:272: attempt to index local 'v'") that stopped the frames from loading, when the game had made a party frame Lattice hadn't set up yet.
+- Fix: an error at login that could stop the frames from loading.
 
 ## v0.4.2 (2026-11-15)
 
