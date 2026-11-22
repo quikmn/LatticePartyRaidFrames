@@ -3,7 +3,7 @@
     python -P tools/fivesecond_art.py
 
 Writes Media/FiveSecond/*.tga (32-bit, uncompressed, top-left origin, power-of-two) and Media/fivesecond-preview.png
-(idle, filling at 40%, burning, burning without lightning), composited the way the client blends them.
+(idle, filling at 40%, burning, burning without flames), composited the way the client blends them.
 
 Everything tintable is white with the shape in the alpha channel: the widget colours it with SetVertexColor /
 SetSwipeColor. The track (dark ring) is the only coloured one.
@@ -26,7 +26,7 @@ GAP = 36.0         # visible gap at the top, degrees
 CAP = math.degrees(math.asin(W / RC))
 END = GAP / 2 + CAP  # arc end points, degrees from the top (round caps reach GAP/2)
 
-# Glow, arcs: shown at twice the widget size, so the ring sits at half these radii.
+# Glow, flames: shown at twice the widget size, so the ring sits at half these radii.
 G = 256
 GRC, GW = RC / 2, W / 2
 
@@ -92,88 +92,76 @@ def save_tga(path, rgba):
 
 
 # ----------------------------------------------------------------------------------------------------------------
-# lightning
+# blue fire
 # ----------------------------------------------------------------------------------------------------------------
-def jag(points, levels, amount):
-    """Midpoint displacement: each pass splits every segment and pushes the middle sideways."""
-    pts = [np.array(p, dtype=float) for p in points]
-    for _ in range(levels):
-        out = [pts[0]]
-        for a, b in zip(pts, pts[1:]):
-            m = (a + b) / 2
-            d = b - a
-            ln = np.hypot(*d) or 1.0
-            nrm = np.array([-d[1], d[0]]) / ln
-            out += [m + nrm * RNG.uniform(-1, 1) * amount * ln, b]
-        pts = out
-        amount *= 0.55
-    return np.array(pts)
+def noise(shape, scale):
+    """Smooth value noise in -1..1 (a blurred random field)."""
+    from scipy.ndimage import gaussian_filter
+    n = gaussian_filter(RNG.normal(0, 1, shape), scale, mode="wrap")
+    return n / (np.abs(n).max() or 1)
 
 
-def seg_dist(x, y, pts):
-    d = np.full(x.shape, np.inf)
-    for a, b in zip(pts, pts[1:]):
-        ab = b - a
-        l2 = ab @ ab or 1e-9
-        t = np.clip(((x - a[0]) * ab[0] + (y - a[1]) * ab[1]) / l2, 0, 1)
-        d = np.minimum(d, np.hypot(x - (a[0] + t * ab[0]), y - (a[1] + t * ab[1])))
-    return d
+def tongue(x, y, base, direction, length, width, wobble, bend):
+    """One flame tongue: a soft teardrop from `base` along `direction`, swaying more towards the tip."""
+    d = np.array(direction, dtype=float)
+    d /= np.hypot(*d)
+    nrm = np.array([-d[1], d[0]])
+    px, py = x - base[0], y - base[1]
+    u = px * d[0] + py * d[1]
+    v = px * nrm[0] + py * nrm[1]
+    t = np.clip(u / length, 0, 1)
+    v = v + wobble * t ** 1.5 + bend * length * t ** 2
+    hw = width * (1 - t) ** 0.8 * (0.6 + 0.4 * np.clip(t / 0.2, 0, 1)) + 0.3
+    along = np.where(u < 0, np.exp(-(u / (width * 0.7)) ** 2), np.where(u > length, 0.0, 1.0))
+    body = np.exp(-(v / hw) ** 2 * 1.5) * along * (1 - t ** 3)
+    ct = np.clip(u / (length * 0.5), 0, 1)
+    chw = width * 0.4 * (1 - ct) ** 0.9 + 0.2
+    calong = np.where(u < 0, np.exp(-(u / (width * 0.45)) ** 2), np.where(u > length * 0.5, 0.0, 1.0))
+    core = np.exp(-(v / chw) ** 2 * 2.0) * calong * (1 - ct ** 2)
+    return body, core
 
 
-def bolt_layers(shape, strands, core_w, glow_s):
-    """strands: list of (points, weight). Returns (glow alpha, core alpha)."""
-    x, y = grid(shape[1], shape[0])
-    glow = np.zeros(shape)
+def flame_layers(shape, tongues, warp):
+    """Tongues on coordinates warped by noise, so the edges lick like gas fire. Returns (glow, core)."""
+    h, w = shape
+    x, y = grid(w, h)
+    x = x + noise(shape, 6) * warp
+    y = y + noise(shape, 6) * warp
+    body = np.zeros(shape)
     core = np.zeros(shape)
-    for pts, wt in strands:
-        d = seg_dist(x, y, pts)
-        core = np.maximum(core, np.clip(core_w * wt + 0.5 - d, 0, 1) * min(1.0, 0.55 + wt))
-        glow = np.maximum(glow, wt * (0.85 * np.exp(-(d / glow_s) ** 2) + 0.35 * np.exp(-(d / (glow_s * 2.8)) ** 2)))
-    return glow, core
+    for tg in tongues:
+        bd, c = tongue(x, y, **tg)
+        body = 1 - (1 - body) * (1 - bd * 0.85)
+        core = np.maximum(core, c)
+    glow = np.clip(body * 0.85 + 0.4 * blur(body, 6), 0, 1)
+    return glow, np.clip(core * 0.9, 0, 1)
 
 
-def ring_arc_bolt(n, rc, start, span):
-    """A crackle that follows the ring with branches poking out, in an n px cell centred on the ring."""
+def ring_tongues(n, rc, count):
+    """Tongues all round the ring, licking out past its edge and leaning upwards (fire rises)."""
     c = n / 2
-    k = 9
-    pts = []
-    for i in range(k + 1):
-        a = math.radians(start + span * i / k + RNG.uniform(-3, 3))
-        r = rc + RNG.uniform(-5, 7) * (0.4 if i in (0, k) else 1)
-        pts.append((c + r * math.sin(a), c - r * math.cos(a)))
-    main = jag(pts, 3, 0.22)
-    strands = [(main, 1.0)]
-    for _ in range(RNG.integers(2, 4)):
-        p = main[RNG.integers(len(main) // 5, len(main) * 4 // 5)]
-        out = np.array([p[0] - c, p[1] - c])
-        out /= np.hypot(*out)
-        ang = math.atan2(out[1], out[0]) + RNG.uniform(-0.7, 0.7)
-        ln = RNG.uniform(10, 24)
-        tip = p + np.array([math.cos(ang), math.sin(ang)]) * ln
-        strands.append((jag([p, tip], 3, 0.25), 0.55))
-    return strands
+    out = []
+    for i in range(count):
+        a = math.radians(360 * (i + RNG.uniform(0.2, 0.8)) / count)
+        radial = np.array([math.sin(a), -math.cos(a)])
+        up = 0.9 if radial[1] > 0 else 0.55          # under the ring they curl up round it
+        direction = radial + np.array([0, -up])
+        out.append(dict(base=(c + rc * radial[0], c + rc * radial[1]), direction=direction,
+                        length=RNG.uniform(24, 42) * (1.15 if radial[1] < -0.3 else 0.85), width=RNG.uniform(9, 13),
+                        wobble=RNG.uniform(-5, 5), bend=RNG.uniform(-0.25, 0.25)))
+    return out
 
 
-def wisp_bolt(cw, ch):
-    """A short tongue of lightning rising from the bottom middle, flickering sideways, forking near the top."""
-    x0 = cw / 2
-    k = 6
-    top = ch * RNG.uniform(0.38, 0.5)
-    bottom = ch - 26
-    pts = [(x0 + RNG.uniform(-3, 3), bottom)]
-    for i in range(1, k + 1):
-        t = i / k
-        pts.append((x0 + RNG.uniform(-1, 1) * cw * 0.16 * (0.4 + t), bottom - t * (bottom - top)))
-    main = jag(pts, 3, 0.2)
-    cut = len(main) * 3 // 5
-    strands = [(main[: cut + 1], 1.0), (main[cut:], 0.6)]
-    for _ in range(RNG.integers(2, 4)):
-        i = RNG.integers(len(main) // 3, len(main) - 2)
-        p = main[i]
-        side = RNG.choice([-1, 1])
-        tip = p + np.array([side * RNG.uniform(8, 20), -RNG.uniform(10, 26)])
-        strands.append((jag([p, tip], 2, 0.3), 0.45))
-    return strands
+def plume_tongues(cw, ch):
+    """Fire rising from the ring's centre (cell bottom) up through the gap and above it."""
+    base_y = ch - 30
+    out = [dict(base=(cw / 2 + RNG.uniform(-2, 2), base_y), direction=(RNG.uniform(-0.08, 0.08), -1),
+                length=ch * RNG.uniform(0.68, 0.8), width=cw * 0.2, wobble=RNG.uniform(-12, 12), bend=RNG.uniform(-0.15, 0.15))]
+    for side in (-1, 1):
+        out.append(dict(base=(cw / 2 + side * cw * 0.08, base_y - 6), direction=(side * RNG.uniform(0.08, 0.22), -1),
+                        length=ch * RNG.uniform(0.4, 0.55), width=cw * 0.13, wobble=RNG.uniform(-8, 8),
+                        bend=side * RNG.uniform(0, 0.25)))
+    return out
 
 
 # ----------------------------------------------------------------------------------------------------------------
@@ -232,39 +220,45 @@ def make_glow():
     return white(a)
 
 
-def make_arcs():
-    """2x2 sheet of 256 px cells; each a crackle on the ring at a different spot."""
+def make_flames():
+    """2x2 sheet of 256 px cells, each fire all round the ring (four variations to crossfade)."""
     glow = np.zeros((512, 512))
     core = np.zeros((512, 512))
-    starts = [(40, 95), (150, 80), (230, 100), (300, 70)]
-    for i, (s, span) in enumerate(starts):
-        g, k = bolt_layers((256, 256), ring_arc_bolt(256, GRC, s, span), 1.1, 3.2)
+    x, y = grid(256)
+    fade = np.clip((128 - 4 - np.hypot(x - 128, y - 128)) / 14, 0, 1)
+    for i in range(4):
+        g, k = flame_layers((256, 256), ring_tongues(256, GRC + GW * 0.3, 10), 4.5)
         cy, cx = divmod(i, 2)
-        # keep a clear border so neighbours never bleed with filtering
-        x, y = grid(256)
-        fade = np.clip((128 - 4 - np.hypot(x - 128, y - 128)) / 10, 0, 1)
         glow[cy * 256:(cy + 1) * 256, cx * 256:(cx + 1) * 256] = g * fade
-        core[cy * 256:(cy + 1) * 256, cx * 256:(cx + 1) * 256] = k * fade
+        core[cy * 256:(cy + 1) * 256, cx * 256:(cx + 1) * 256] = k * fade * 0.7
     return white(glow), white(core)
 
 
-def make_wisps():
-    """4 cells of 128x256 side by side: strands rising from the gap."""
+def make_plume():
+    """4 cells of 128x256 side by side: fire rising from the centre out through the gap."""
     glow = np.zeros((256, 512))
     core = np.zeros((256, 512))
+    x, y = grid(128, 256)
+    fade = np.clip((x - 3) / 16, 0, 1) * np.clip((125 - x) / 16, 0, 1) * np.clip((y - 3) / 26, 0, 1)
+    fade *= np.clip((254 - y) / 20, 0, 1)
     for i in range(4):
-        g, k = bolt_layers((256, 128), wisp_bolt(128, 256), 2.2, 6.0)
-        x, y = grid(128, 256)
-        fade = np.clip((x - 3) / 14, 0, 1) * np.clip((125 - x) / 14, 0, 1) * np.clip((y - 3) / 24, 0, 1)
-        # soft base (it starts inside the ring's glow), fades as it rises
-        fade *= np.clip((252 - y) / 22, 0, 1) * (0.3 + 0.7 * (y / 256))
+        g, k = flame_layers((256, 128), plume_tongues(128, 256), 5.0)
         glow[:, i * 128:(i + 1) * 128] = g * fade
         core[:, i * 128:(i + 1) * 128] = k * fade
     return white(glow), white(core)
 
 
+def make_ember():
+    """The fire's source in the ring's middle: a white-hot centre in a soft glow (the widget tints a second copy)."""
+    x, y = grid(128)
+    r = np.hypot(x - 64, y - 64)
+    a = 0.9 * np.exp(-(r / 9) ** 2) + 0.45 * np.exp(-(r / 22) ** 2)
+    a *= np.clip((62 - r) / 10, 0, 1)
+    return white(a)
+
+
 # ----------------------------------------------------------------------------------------------------------------
-# preview: blend like the client does (BLEND for track/fill, ADD for glow, core and lightning)
+# preview: blend like the client does (BLEND for track/fill, ADD for glow, core and flames)
 # ----------------------------------------------------------------------------------------------------------------
 FILL = np.array([0x4f, 0xb4, 0xff]) / 255
 BURN = np.array([0x4f, 0xb4, 0xff]) / 255
@@ -325,7 +319,7 @@ def cell(sheet, col, row, cw, ch):
 def preview(tex):
     S = 150
     PW, PH = 380, 440
-    labels = ["Idle (full mana)", "Filling: 2 of 5 s", "Burning: mana coming back", "Burning, calm mode"]
+    labels = ["Idle (full mana)", "Filling: 2 of 5 s", "Burning: mana coming back", "Burning, calm mode (no flames)"]
     img = np.zeros((PH, PW * 4, 3))
     yy = np.linspace(0, 1, PH)[:, None, None]
     img[...] = (np.array([27, 33, 44]) / 255) * (1 - yy) + (np.array([10, 12, 17]) / 255) * yy
@@ -335,10 +329,11 @@ def preview(tex):
     fill = resized(tex["fill"], S, S)
     core = resized(tex["core"], S, S)
     glow = resized(tex["glow"], 2 * S, 2 * S)
-    arcs_g = [resized(cell(tex["arcs_glow"], i % 2, i // 2, 256, 256), 2 * S, 2 * S) for i in range(4)]
-    arcs_c = [resized(cell(tex["arcs_core"], i % 2, i // 2, 256, 256), 2 * S, 2 * S) for i in range(4)]
-    wisp_g = [resized(cell(tex["wisps_glow"], i, 0, 128, 256), S // 2, S) for i in range(4)]
-    wisp_c = [resized(cell(tex["wisps_core"], i, 0, 128, 256), S // 2, S) for i in range(4)]
+    fl_g = [resized(cell(tex["flames_glow"], i % 2, i // 2, 256, 256), 2 * S, 2 * S) for i in range(4)]
+    fl_c = [resized(cell(tex["flames_core"], i % 2, i // 2, 256, 256), 2 * S, 2 * S) for i in range(4)]
+    pl_g = [resized(cell(tex["plume_glow"], i, 0, 128, 256), int(S * 0.6), int(S * 1.2)) for i in range(4)]
+    pl_c = [resized(cell(tex["plume_core"], i, 0, 128, 256), int(S * 0.6), int(S * 1.2)) for i in range(4)]
+    ember = resized(tex["ember"], S, S)
 
     for p in range(4):
         cx, cy = PW * p + PW / 2, 250
@@ -354,14 +349,18 @@ def preview(tex):
             place(panel, core, cx, cy, (1, 1, 1), 0.75, "add")
             place(panel, core, cx, cy, BURN, 0.5, "add")
             if p == 2:
-                for i, rot in ((0, 0), (2, 25)):
-                    place(panel, arcs_g[i], cx, cy, BURN, 0.95, "add", rot)
-                    place(panel, arcs_c[i], cx, cy, (0.85, 0.95, 1), 1.0, "add", rot)
-                top = cy - S * (18 / 64)
-                for i, rise, a, dx in ((0, 0.10, 1.0, 0), (1, 0.32, 0.65, -0.06), (3, 0.05, 0.5, 0.07)):
-                    wy = top - S / 2 + 0.08 * S - rise * S
-                    place(panel, wisp_g[i], cx + dx * S, wy, BURN, a, "add")
-                    place(panel, wisp_c[i], cx + dx * S, wy, (0.85, 0.95, 1), a, "add")
+                # fire wrapping the ring (two variations mid-crossfade), rising from the centre through the gap
+                for i, a in ((0, 0.75), (2, 0.5)):
+                    place(panel, fl_g[i], cx, cy, BURN, a, "add")
+                    place(panel, fl_c[i], cx, cy, (0.8, 0.93, 1), a, "add")
+                for i, rise, a, dx in ((0, 0.03, 0.9, 0), (2, 0.1, 0.5, -0.04)):
+                    py = cy - 0.1 * S * -1 - S * 1.2 / 2 - rise * S
+                    place(panel, pl_g[i], cx + dx * S, py, BURN, a, "add")
+                    place(panel, pl_c[i], cx + dx * S, py, (0.8, 0.93, 1), a, "add")
+                place(panel, ember, cx, cy, BURN, 0.9, "add")
+                place(panel, ember, cx, cy, (1, 1, 1), 0.55, "add")
+            elif p == 3:
+                place(panel, ember, cx, cy, BURN, 0.6, "add")
     out = Image.fromarray((np.clip(img, 0, 1) * 255 + 0.5).astype(np.uint8), "RGB")
     d = ImageDraw.Draw(out)
     try:
@@ -374,7 +373,6 @@ def preview(tex):
         d.text((PW * p + (PW - w) / 2, PH - 52), text, fill=(220, 228, 240), font=font)
     sub = "Lattice: 5-second rule widget (shown at 150 px; default size in game is 64 px)"
     d.text((16, 12), sub, fill=(140, 152, 170), font=small)
-    d.text((PW + PW / 2 - 7, 250 - 14), "3", fill=(235, 242, 255), font=font)
     out.save(PREVIEW)
 
 
@@ -386,8 +384,9 @@ def main():
         "core": make_core(),
         "glow": make_glow(),
     }
-    tex["arcs_glow"], tex["arcs_core"] = make_arcs()
-    tex["wisps_glow"], tex["wisps_core"] = make_wisps()
+    tex["flames_glow"], tex["flames_core"] = make_flames()
+    tex["plume_glow"], tex["plume_core"] = make_plume()
+    tex["ember"] = make_ember()
     for name, rgba in tex.items():
         save_tga(os.path.join(OUT, name + ".tga"), rgba)
     preview(tex)

@@ -34,29 +34,74 @@ local function Settings() return ns.db and ns.db.appearance.fiveSecond end
 ------------------------------------------------------------------------
 -- Detection
 ------------------------------------------------------------------------
+-- true / false, or nil when the client won't say right now (cost data secret, as it can be in combat).
 local function CostsMana(spellID)
 	local get = (C_Spell and C_Spell.GetSpellPowerCost) or GetSpellPowerCost
-	if not get then return false end
+	if not get then return nil end
 	local ok, costs = pcall(get, spellID)
-	if not ok or issecret(costs) or type(costs) ~= "table" then return false end
+	if not ok or issecret(costs) or type(costs) ~= "table" then return nil end
+	local unknown = false
 	for i = 1, #costs do
 		local c = costs[i]
-		if type(c) == "table" and not issecret(c) then
-			local kind, name = Plain(c.type, nil), Plain(c.name, nil)
-			if kind == 0 or name == "MANA" then
-				local cost, pct = Plain(c.cost, 0), Plain(c.costPercent, 0)
-				if (type(cost) == "number" and cost > 0) or (type(pct) == "number" and pct > 0) then return true end
+		if issecret(c) then
+			unknown = true
+		elseif type(c) == "table" then
+			local kind, name = c.type, c.name
+			if issecret(kind) or issecret(name) then
+				unknown = true
+			elseif kind == 0 or name == "MANA" then
+				local cost, pct = c.cost, c.costPercent
+				if issecret(cost) or issecret(pct) then
+					unknown = true
+				elseif (type(cost) == "number" and cost > 0) or (type(pct) == "number" and pct > 0) then
+					return true
+				end
 			end
 		end
 	end
+	if unknown then return nil end
 	return false
 end
 
--- true when the spell costs mana; false for free spells and anything unreadable (secret ID, odd cost data).
+-- What each spell cost when it could be read: in combat the cost can be secret, and then this answers.
+FS.costKnown = {}
+
+-- true when the spell costs mana; false for free spells and anything unreadable that was never read before.
 function FS.SpellCostsMana(spellID)
 	if issecret(spellID) or type(spellID) ~= "number" or FS.IGNORE[spellID] then return false end
 	local ok, mana = pcall(CostsMana, spellID)
-	return ok and mana == true
+	if ok and mana ~= nil then
+		FS.costKnown[spellID] = mana
+		return mana
+	end
+	return FS.costKnown[spellID] == true
+end
+
+-- Read the cost of every spell in your spellbook while it can be read (out of combat), for the fights after.
+function FS:LearnCosts()
+	local SB = C_SpellBook
+	if InCombatLockdown() or not (SB and SB.GetNumSpellBookSkillLines and SB.GetSpellBookSkillLineInfo and SB.GetSpellBookItemInfo) then return end
+	local bank = Enum.SpellBookSpellBank and Enum.SpellBookSpellBank.Player or 0
+	pcall(function()
+		for line = 1, SB.GetNumSpellBookSkillLines() do
+			local info = SB.GetSpellBookSkillLineInfo(line)
+			local first, n = info and Plain(info.itemIndexOffset, nil), info and Plain(info.numSpellBookItems, nil)
+			if type(first) == "number" and type(n) == "number" then
+				for slot = first + 1, first + n do
+					local item = SB.GetSpellBookItemInfo(slot, bank)
+					local id = item and Plain(item.spellID, nil)
+					if type(id) == "number" and not Plain(item.isPassive, false) then FS.SpellCostsMana(id) end
+				end
+			end
+		end
+	end)
+end
+
+-- The spell ID inside a cast GUID ("Cast-3-serverID-instanceID-zoneUID-spellID-castUID"), when the event's own spell
+-- ID is secret.
+function FS.SpellFromCast(castGUID)
+	if issecret(castGUID) or type(castGUID) ~= "string" then return nil end
+	return tonumber(castGUID:match("^Cast%-%d+%-%d+%-%d+%-%d+%-(%d+)%-"))
 end
 
 local function GroupUnit(unit)
@@ -69,13 +114,34 @@ local function GUIDOf(unit)
 	return guid
 end
 
-local function IsMe(unit)
-	return unit == "player" or Plain(UnitIsUnit(unit, "player"), false) == true
+-- Your GUID, read while it can be (it may be secret in combat).
+local function MyGUID()
+	if not FS.myGUID then
+		local g = UnitGUID("player")
+		if not issecret(g) and type(g) == "string" then FS.myGUID = g end
+	end
+	return FS.myGUID
 end
 
+-- You, under any name the event uses ("player", "raid7", "party0").
+local function IsMe(unit)
+	if unit == "player" or Plain(UnitIsUnit(unit, "player"), false) == true then return true end
+	local mine, g = MyGUID(), UnitGUID(unit)
+	return mine ~= nil and not issecret(g) and g == mine
+end
+FS.IsMe = IsMe
+
+-- Your own power type is remembered: if the game hides it for a moment (combat), the last one read counts.
 local function UsesMana(unit)
-	local _, token = UnitPowerType(unit)
-	return Plain(token, nil) == "MANA"
+	local id, token = UnitPowerType(unit)
+	local known
+	if not issecret(token) and token ~= nil then known = token == "MANA"
+	elseif not issecret(id) and type(id) == "number" then known = id == 0 end
+	if unit == "player" then
+		if known ~= nil then FS.playerMana = known end
+		return FS.playerMana ~= false
+	end
+	return known == true
 end
 FS.UsesMana = UsesMana
 
@@ -100,14 +166,16 @@ local function ForGUID(guid, fn)
 end
 
 -- Your own spends also go to the 5-second rule ring (Modules/FiveSecondWidget.lua), which has its own on/off.
-function FS:OnCast(unit, spellID)
+function FS:OnCast(unit, spellID, castGUID)
 	local C = Settings()
-	if not C or not GroupUnit(unit) then return end
+	if not C or type(unit) ~= "string" or issecret(unit) then return end
 	local ring = FS.Widget and FS.Widget:Enabled() and IsMe(unit)
+	if not ring and not GroupUnit(unit) then return end
 	if not C.enabled and not ring then return end
+	if issecret(spellID) or type(spellID) ~= "number" then spellID = FS.SpellFromCast(castGUID) end
 	if not FS.SpellCostsMana(spellID) then return end
 	if ring then FS.Widget:OnSpend(GetTime()) end
-	if not C.enabled then return end
+	if not C.enabled or not GroupUnit(unit) then return end
 	local guid = GUIDOf(unit)
 	if not guid or not self:Wants(unit) then return end
 	FS.spent[guid] = GetTime()
@@ -336,9 +404,20 @@ end
 ------------------------------------------------------------------------
 -- Events
 ------------------------------------------------------------------------
-ns:RegisterEvent("UNIT_SPELLCAST_SUCCEEDED", function(_, unit, _, spellID)
-	FS:OnCast(unit, spellID)
+ns:RegisterEvent("UNIT_SPELLCAST_SUCCEEDED", function(_, unit, castGUID, spellID)
+	FS:OnCast(unit, spellID, castGUID)
 end)
+
+-- learn spell costs out of combat (login, new spells), a moment later so a burst of SPELLS_CHANGED reads once
+local learning = false
+local function Learn()
+	if learning then return end
+	learning = true
+	C_Timer.After(1, function() learning = false; FS:LearnCosts() end)
+end
+ns:RegisterEvent("PLAYER_LOGIN", Learn)
+ns:RegisterEvent("SPELLS_CHANGED", Learn)
+ns:RegisterEvent("PLAYER_REGEN_ENABLED", Learn)
 
 local function OnPower(_, unit)
 	local set = unit and ns.Buttons and ns.Buttons.byUnit[unit]

@@ -21,7 +21,7 @@ Party and raid frames for WoW Forever: corner spell indicators, an easy settings
 - Dispel highlight: a big icon of a debuff you can remove in the middle of the frame, edged in its type's colour, plus an optional coloured border or tint.
 - Raid buffs in a row beside each frame, and a mark on players missing your class's buff.
 - The 5-second rule: after a mana spell, a thin line over the mana bar drains for 5 seconds, then glows while mana comes back (you and your healers, or anyone you pick). `/lattice 5sr` turns it on or off.
-- The 5-second rule ring: your own ring to place anywhere. It fills for the 5 seconds after you spend mana, then burns bright with blue lightning while your mana comes back. `/lattice 5sr move` to place it, `/lattice 5sr widget off` to turn it off.
+- The 5-second rule ring: your own ring to place anywhere. It fills for the 5 seconds after you spend mana, then burns with blue fire while your mana comes back. It shows in combat (or always, if you like). `/lattice 5sr move` to place it, `/lattice 5sr widget off` to turn it off.
 - Incoming heals, shields, low health warning, range fade (by your heal's range), role, leader, raid marker, ready check, resurrect and summon icons. Dead players tint red, offline players grey.
 - Tank frames with each tank's target, in raids.
 - Profiles per spec (on clients with specs), and one string to share your whole setup.

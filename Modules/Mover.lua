@@ -7,14 +7,16 @@ ns.Mover = Mover
 local anchors = {}
 local unlocked = false
 
--- key: "party" or "raid". Position stored in ns.db.positions[key].
-function Mover:GetAnchor(key, label)
+-- key: "party" or "raid". Position stored in ns.db.positions[key]. free: carries no secure frames, so it is placed
+-- at once even in combat (the 5-second rule ring).
+function Mover:GetAnchor(key, label, free)
 	if anchors[key] then return anchors[key] end
 	local a = CreateFrame("Frame", "LatticeAnchor_" .. key, UIParent)
 	a:SetSize(120, 40)
 	a:SetMovable(true)
 	a:SetClampedToScreen(true)
 	a.key = key
+	a.free = free
 
 	local overlay = CreateFrame("Frame", nil, a)
 	overlay:SetAllPoints()
@@ -26,6 +28,7 @@ function Mover:GetAnchor(key, label)
 	U.SetFont(text, 12, "OUTLINE")
 	text:SetPoint("CENTER")
 	text:SetText("Lattice: " .. (label or key) .. "\n|cffaaaaaadrag to move|r")
+	a.label = text
 	overlay:Hide()
 	a.overlay = overlay
 
@@ -61,6 +64,11 @@ end
 
 function Mover:RestorePosition(a)
 	local pos = ns.db.positions[a.key] or ns.Defaults.positions[a.key]
+	if a.free then
+		a:ClearAllPoints()
+		a:SetPoint(pos.point, UIParent, pos.relPoint, pos.x, pos.y)
+		return
+	end
 	ns:RunOutOfCombat("anchor-pos-" .. a.key, function()
 		a:ClearAllPoints()
 		a:SetPoint(pos.point, UIParent, pos.relPoint, pos.x, pos.y)

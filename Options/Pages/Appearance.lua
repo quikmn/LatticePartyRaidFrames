@@ -81,8 +81,8 @@ O:RegisterPage("appearance", "Appearance", nil, function(s)
 	}))
 
 	W.Header(s, "Mana: 5-second rule ring",
-		"Your own ring to place anywhere: it fills for the 5 seconds after you spend mana, then burns bright while your mana comes back.",
-		{ "5sr", "five second rule", "mana", "regen", "widget", "spirit", "ring", "weak aura" })
+		"Your own ring to place anywhere: it fills for the 5 seconds after you spend mana, then burns with blue fire while your mana comes back.",
+		{ "5sr", "five second rule", "mana", "regen", "widget", "spirit", "ring", "weak aura", "fire", "flame" })
 	local RING_KEYS = { "5sr", "five second rule", "mana", "regen", "widget", "spirit", "ring" }
 	local function R() return A().fiveSecond.widget end
 	local function noRing() return not R().enabled end
@@ -101,19 +101,21 @@ O:RegisterPage("appearance", "Appearance", nil, function(s)
 	end
 	s:Add(move, 26)
 	W.Note(s, "Or click |cffffffffUnlock frames|r at the bottom left: the ring moves with everything else.")
+	W.Toggle(s, Bind("appearance.fiveSecond.widget.combatOnly", "appearance", {
+		label = "Only in combat", keywords = { "5sr", "ring", "combat", "only in combat", "out of combat", "hide" }, disabled = noRing,
+		desc = "Shows when a fight starts and fades out when it ends. In combat it always shows.",
+	}))
 	W.Slider(s, Bind("appearance.fiveSecond.widget.size", "appearance", {
 		label = "Ring size", keywords = { "scale", "5sr", "ring", "widget" }, min = 32, max = 160, step = 4, disabled = noRing,
 	}))
 	W.Toggle(s, Bind("appearance.fiveSecond.widget.hideIdle", "appearance", {
-		label = "Hide the ring at full mana", keywords = RING_KEYS, disabled = noRing,
-		desc = "Off: a dim ring stays on screen.",
+		label = "Hide the ring at full mana", keywords = RING_KEYS,
+		desc = "Out of combat only. Off: a dim ring stays on screen.",
+		disabled = function() return noRing() or R().combatOnly end,
 	}))
 	W.Toggle(s, Bind("appearance.fiveSecond.widget.lightning", "appearance", {
-		label = "Lightning while mana comes back", keywords = { "5sr", "ring", "effects", "calm", "animation", "sparks" }, disabled = noRing,
+		label = "Flames while mana comes back", keywords = { "5sr", "ring", "effects", "calm", "animation", "fire", "flame", "flames" }, disabled = noRing,
 		desc = "Off: a calm glow only.",
-	}))
-	W.Toggle(s, Bind("appearance.fiveSecond.widget.seconds", "appearance", {
-		label = "Seconds left in the middle", keywords = RING_KEYS, disabled = noRing,
 	}))
 	W.Toggle(s, Bind("appearance.fiveSecond.widget.mp5", "appearance", {
 		label = "Mana regen (mp5) under the ring", keywords = { "5sr", "ring", "mp5", "mana per 5", "regen" }, disabled = noRing,
