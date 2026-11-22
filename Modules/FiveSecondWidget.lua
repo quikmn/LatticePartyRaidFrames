@@ -154,6 +154,9 @@ function FW:Build()
 
 	-- filling: the client draws the sweep (no Lua per frame)
 	local cd = CreateFrame("Cooldown", nil, f)
+	-- no numbers on the ring: cooldown-text addons (OmniCC, ClassicCooldownCount and others) skip a cooldown with
+	-- noCooldownCount, and some turn the game's own countdown back on unless told so
+	cd.noCooldownCount, cd.noCCC = true, true
 	cd:SetAllPoints()
 	cd:SetFrameLevel(L + 2)
 	cd:SetSwipeTexture(MEDIA .. "fill")
