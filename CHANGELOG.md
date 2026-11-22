@@ -1,6 +1,6 @@
 # Lattice Party & Raid Frames
 
-## Unreleased
+## v0.10.0 (2026-11-22)
 - New: the 5Sr bar, a thin bar you can place anywhere. After you spend mana it counts up over the 5 seconds; then it turns bright and shows your mp5 while your mana comes back. It shows in combat and fades out after (turn off "Only in combat" to keep it up). Width, height, colours and the mp5 text on the Appearance page. Move it with Unlock frames or `/lattice 5sr move`; `/lattice 5sr widget off` turns it off.
 
 ## v0.9.0 (2026-11-22)
