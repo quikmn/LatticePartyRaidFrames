@@ -165,7 +165,7 @@ local function ForGUID(guid, fn)
 	end
 end
 
--- Your own spends also go to the 5-second rule ring (Modules/FiveSecondWidget.lua), which has its own on/off.
+-- Your own spends also go to the 5Sr bar (Modules/FiveSecondWidget.lua), which has its own on/off.
 function FS:OnCast(unit, spellID, castGUID)
 	local C = Settings()
 	if not C or type(unit) ~= "string" or issecret(unit) then return end
@@ -333,9 +333,12 @@ driver:SetScript("OnUpdate", function(self, elapsed)
 	FS:Tick()
 end)
 
+-- Also moves the 5Sr bar (Modules/FiveSecondWidget.lua) while it fills.
 function FS:Tick()
 	for btn in pairs(self.active) do self:Update(btn) end
-	if next(self.active) == nil then driver:Hide() end
+	local bar = self.Widget
+	if bar and bar.counting then bar:Tick() end
+	if next(self.active) == nil and not (bar and bar.counting) then driver:Hide() end
 end
 
 function FS:Update(btn)

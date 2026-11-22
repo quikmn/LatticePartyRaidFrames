@@ -80,51 +80,45 @@ O:RegisterPage("appearance", "Appearance", nil, function(s)
 		label = "Mana coming back color", keywords = FIVE_KEYS, disabled = noFive,
 	}))
 
-	W.Header(s, "Mana: 5-second rule ring",
-		"Your own ring to place anywhere: it fills for the 5 seconds after you spend mana, then a gentle blue flame burns in it while your mana comes back.",
-		{ "5sr", "five second rule", "mana", "regen", "widget", "spirit", "ring", "weak aura", "fire", "flame" })
-	local RING_KEYS = { "5sr", "five second rule", "mana", "regen", "widget", "spirit", "ring" }
-	local function R() return A().fiveSecond.widget end
-	local function noRing() return not R().enabled end
+	W.Header(s, "Mana: 5Sr bar",
+		"Your own bar to place anywhere: it counts up for the 5 seconds after you spend mana, then turns bright while your mana comes back.",
+		{ "5sr", "five second rule", "mana", "regen", "mp5", "bar", "spirit", "widget" })
+	local BAR_KEYS = { "5sr", "five second rule", "mana", "regen", "mp5", "bar", "spirit", "widget" }
+	local function B() return A().fiveSecond.widget end
+	local function noBar() return not B().enabled end
 	W.Toggle(s, Bind("appearance.fiveSecond.widget.enabled", "appearance", {
-		label = "Show the 5-second rule ring", keywords = RING_KEYS,
+		label = "Show the 5Sr bar", keywords = BAR_KEYS,
 		desc = "Shown when you use mana. Separate from the line on the frames above.",
 	}))
 	local move
-	move = W.Button(nil, "Move the ring", function()
-		local FW = ns.FiveSecondWidget
-		FW:SetMoving(not ns.Mover:IsSolo("fiveSecond"))
+	move = W.Button(nil, "Move the bar", function()
+		ns.FiveSecondWidget:SetMoving(not ns.Mover:IsSolo("fiveSecond"))
 		move:Refresh()
 	end, 180)
 	function move:Refresh()
-		self:SetText(ns.Mover:IsSolo("fiveSecond") and "Lock the ring" or "Move the ring")
+		self:SetText(ns.Mover:IsSolo("fiveSecond") and "Lock the bar" or "Move the bar")
 	end
 	s:Add(move, 26)
-	W.Note(s, "Or click |cffffffffUnlock frames|r at the bottom left: the ring moves with everything else.")
+	W.Note(s, "Or click |cffffffffUnlock frames|r at the bottom left: the bar moves with everything else.")
 	W.Toggle(s, Bind("appearance.fiveSecond.widget.combatOnly", "appearance", {
-		label = "Only in combat", keywords = { "5sr", "ring", "combat", "only in combat", "out of combat", "hide" }, disabled = noRing,
-		desc = "Shows when a fight starts and fades out when it ends. In combat it always shows.",
+		label = "Only in combat", keywords = { "5sr", "bar", "combat", "only in combat", "out of combat", "hide" }, disabled = noBar,
+		desc = "Shows when a fight starts and fades out when it ends. In combat it always shows. Off: out of combat it hides at full mana.",
 	}))
-	W.Slider(s, Bind("appearance.fiveSecond.widget.size", "appearance", {
-		label = "Ring size", keywords = { "scale", "5sr", "ring", "widget" }, min = 16, max = 160, step = 2, disabled = noRing,
+	W.Slider(s, Bind("appearance.fiveSecond.widget.width", "appearance", {
+		label = "Bar width", keywords = { "5sr", "bar", "size", "width" }, min = 40, max = 400, step = 2, disabled = noBar,
 	}))
-	W.Toggle(s, Bind("appearance.fiveSecond.widget.hideIdle", "appearance", {
-		label = "Hide the ring at full mana", keywords = RING_KEYS,
-		desc = "Out of combat only. Off: a dim ring stays on screen.",
-		disabled = function() return noRing() or R().combatOnly end,
-	}))
-	W.Toggle(s, Bind("appearance.fiveSecond.widget.lightning", "appearance", {
-		label = "Flame while mana comes back", keywords = { "5sr", "ring", "effects", "calm", "animation", "fire", "flame", "flames" }, disabled = noRing,
-		desc = "A gentle blue flame in the ring. Off: the glow only.",
+	W.Slider(s, Bind("appearance.fiveSecond.widget.height", "appearance", {
+		label = "Bar height", keywords = { "5sr", "bar", "size", "height" }, min = 4, max = 40, step = 1, disabled = noBar,
 	}))
 	W.Toggle(s, Bind("appearance.fiveSecond.widget.mp5", "appearance", {
-		label = "Mana regen (mp5) under the ring", keywords = { "5sr", "ring", "mp5", "mana per 5", "regen" }, disabled = noRing,
+		label = "Show mp5 beside the bar", keywords = BAR_KEYS, disabled = noBar,
+		desc = "\"mp5: 42\" while your mana comes back: what Spirit and gear restore every 5 seconds.",
 	}))
 	W.Color(s, Bind("appearance.fiveSecond.widget.fillColor", "appearance", {
-		label = "Ring filling color", keywords = RING_KEYS, disabled = noRing,
+		label = "Counting up color", keywords = BAR_KEYS, disabled = noBar,
 	}))
-	W.Color(s, Bind("appearance.fiveSecond.widget.burnColor", "appearance", {
-		label = "Ring glow color", keywords = RING_KEYS, disabled = noRing,
+	W.Color(s, Bind("appearance.fiveSecond.widget.brightColor", "appearance", {
+		label = "Mana coming back color (bright)", keywords = BAR_KEYS, disabled = noBar,
 	}))
 
 	W.Header(s, "Border and highlights")

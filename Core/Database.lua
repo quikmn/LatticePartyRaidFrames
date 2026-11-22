@@ -45,11 +45,13 @@ local MIGRATIONS = {
 		end
 	end,
 	[5] = function(sv)
-		-- the 5-second rule ring got half as big (64 -> 32 px): a profile that kept the old size takes the new one
+		-- the 5-second rule ring became the 5Sr bar: its own settings go (on/off and "Only in combat" stay)
 		for _, p in pairs(sv.profiles or {}) do
 			local w = type(p) == "table" and type(p.appearance) == "table" and type(p.appearance.fiveSecond) == "table"
 				and p.appearance.fiveSecond.widget
-			if type(w) == "table" and w.size == 64 then w.size = nil end
+			if type(w) == "table" then
+				for _, k in ipairs({ "size", "hideIdle", "lightning", "burnColor", "seconds", "fillColor" }) do w[k] = nil end
+			end
 		end
 	end,
 }

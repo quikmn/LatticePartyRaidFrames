@@ -1453,162 +1453,137 @@ local function Fight(on)
 	MOCK.Fire(on and "PLAYER_REGEN_DISABLED" or "PLAYER_REGEN_ENABLED")
 end
 
-step("5-second rule ring: defaults, built at login, small 5sR label, never takes the mouse", function()
+step("5Sr bar: defaults, built at login, label, never takes the mouse, no numbers anywhere", function()
 	local FW, W = ns.FiveSecondWidget, ns.db.appearance.fiveSecond.widget
-	check(W.enabled == true and W.combatOnly == true and W.size == 32 and W.hideIdle == true and W.lightning == true and W.mp5 == false,
-		"defaults: on, only in combat, 32 px, hidden at full mana, the flame, no mp5")
-	check(W.seconds == nil and ns.Defaults.appearance.fiveSecond.widget.seconds == nil, "the seconds number is still a setting")
+	check(W.enabled == true and W.combatOnly == true and W.width == 120 and W.height == 10 and W.mp5 == true,
+		"defaults: on, only in combat, 120 x 10, mp5 text")
+	for _, k in ipairs(FW.GONE) do check(W[k] == nil, "old ring setting kept: " .. k) end
 	local f = FW.frame
-	check(f and _G.LatticeFiveSecondRing == f, "the ring wasn't built")
-	check(FW.anchor:GetWidth() == 32 and FW.anchor:GetHeight() == 32, "size")
-	check(FW.anchor.label:GetText() == "5sR", "label: " .. tostring(FW.anchor.label:GetText()))
-	check(f.text == nil, "a number in the middle")
+	check(f and _G.LatticeFiveSecondBar == f, "the bar wasn't built")
+	check(FW.anchor:GetWidth() == 120 and FW.anchor:GetHeight() == 10, "size")
+	check(f.label:GetText() == "5Sr" and FW.anchor.label:GetText() == "5Sr", "label: " .. tostring(f.label:GetText()))
 	check(not f:IsMouseEnabled() and not FW.anchor.overlay:IsShown(), "takes the mouse while locked")
-	check(ns.db.positions.fiveSecond and ns.db.positions.fiveSecond.y == -140, "no saved position")
-	-- a /reload mid-fight: the ring is placed at once (it isn't secure), not after combat
+	-- no Cooldown frame (nothing can draw countdown numbers) and no text but the label and mp5
+	local function walk(w, fn)
+		fn(w)
+		for _, c in ipairs(rawget(w, "__children") or {}) do walk(c, fn) end
+	end
+	walk(f, function(w)
+		check(w.__kind ~= "Cooldown", "a Cooldown frame in the bar")
+		if w.__kind == "FontString" then check(w == f.label or w == f.mp5, "an extra text on the bar") end
+	end)
+	-- a /reload mid-fight: placed at once (it isn't secure), not after combat
 	local placed = false
 	rawset(FW.anchor, "SetPoint", function() placed = true end)
 	MOCK.combat = true
 	ns.Mover:RestorePosition(FW.anchor)
 	MOCK.combat = false
 	rawset(FW.anchor, "SetPoint", nil)
-	check(placed, "the ring waits for combat to end to be placed")
+	check(placed, "the bar waits for combat to end to be placed")
 end)
 
-step("5-second rule ring (not only in combat): idle -> filling -> burning -> idle at full mana", function()
+step("5Sr bar (not only in combat): counts up, bright with mp5, hidden at full", function()
 	local FW, W, FS = ns.FiveSecondWidget, ns.db.appearance.fiveSecond.widget, ns.FiveSecond
 	local f = FW.frame
 	wipe(FS.spent)
-	FW.spentAt = nil -- the casts in the steps above
+	FW.spentAt = nil
 	W.combatOnly = false
 	MOCK.secretsOn = false
+	GetManaRegen = function() return 8.4, 1.2 end
 	MOCK.units.player.power = 100
 	MOCK.Fire("UNIT_POWER_UPDATE", "player", "MANA")
 	Settle()
-	check(FW.state == nil and not f:IsShown(), "full mana: hidden by default, got " .. tostring(FW.state))
-	W.hideIdle = false
-	ns:ApplySettings("appearance")
-	check(FW.state == "idle" and f:IsShown() and f.fill:IsShown() and math.abs(f.fill:GetAlpha() - 0.22) < 1e-6, "idle: a dim ring")
-	check(not f.burn:IsShown() and not f.halo:IsShown() and not f.breathe:IsPlaying(), "idle burns")
-
-	-- a mana spend: filling, clockwise from the gap, drawn by a Cooldown
-	local now = MOCK.time
+	check(FW.state == nil and not f:IsShown(), "full mana out of combat: shown, got " .. tostring(FW.state))
+	-- a spend: counts up from empty over 5 s, muted, no text
 	Cast("player", 2050)
-	check(FW.state == "count" and f.cd:IsShown() and not f.fill:IsShown(), "a spend didn't start the fill: " .. tostring(FW.state))
-	local cd = rawget(f.cd, "__cd")
-	check(cd and math.abs(cd[1] - (now - FW.LEAD)) < 1e-6 and math.abs(cd[2] - FW.TURN) < 1e-6, "cooldown timing")
-	check(math.abs(FW.LEAD / FW.TURN * 360 - 18) < 1e-6 and math.abs((FW.TURN - 2 * FW.LEAD) - 5) < 1e-6, "the visible arc doesn't take 5 s")
-	check(not f.breathe:IsPlaying(), "animations run while filling")
-	Later(2.2)
-	check(FW.state == "count", "after 2.2 s")
-	-- a second spend starts over
+	check(FW.state == "count" and f:IsShown() and f.bar:GetValue() == 0 and FS.driver:IsShown(), "a spend didn't start counting")
+	check(not f.mp5:IsShown() and not f.glow:IsShown(), "text or glow while counting")
+	Tick(2)
+	check(math.abs(f.bar:GetValue() - 2) < 1e-6, "after 2 s: " .. tostring(f.bar:GetValue()))
 	Cast("player", 2050)
-	check(rawget(f.cd, "__cd")[1] == MOCK.time - FW.LEAD, "a new spend didn't restart it")
-	-- mana not full when the 5 s are over: burning
+	check(FW.state == "count" and f.bar:GetValue() == 0, "a new spend didn't restart it")
+	-- the 5 s are over, mana not full: bright, mp5 beside it, the driver stops
 	MOCK.units.player.power = 60
-	Later(5.05)
-	check(FW.state == "burn" and not f.cd:IsShown() and f.burn:IsShown() and f.halo:IsShown() and f.fire:IsShown(), "not burning after 5 s: " .. tostring(FW.state))
-	check(f.breathe:IsPlaying() and f.burn.shimmer:IsPlaying(), "the glow doesn't breathe")
-	for _, g in ipairs(f.fire.anims) do check(g:IsPlaying(), "the flame doesn't move") end
-	-- one flame in one place: slow smooth loops, nothing picked at random, nothing moved by Lua
-	check(f.fire.a and f.fire.b and #f.fire.anims == 3, "one flame (two shapes crossfading)")
-	for _, g in ipairs(f.fire.anims) do check(g:GetScript("OnLoop") == nil, "something changes the flame on each loop") end
-	check(f.fill:GetAlpha() == 1, "burning: full ring")
-	-- calm mode
-	W.lightning = false
+	Tick(5.05)
+	check(FW.state == "bright" and f.bar:GetValue() == 5 and f.glow:IsShown() and f.glow.breathe:IsPlaying(), "not bright after 5 s: " .. tostring(FW.state))
+	check(f.mp5:IsShown() and f.mp5:GetText() == "mp5: 42", "mp5 text: " .. tostring(f.mp5:GetText()))
+	check(not FS.driver:IsShown(), "the driver keeps running")
+	W.mp5 = false
 	ns:ApplySettings("appearance")
-	check(FW.state == "burn" and not f.fire:IsShown() and f.breathe:IsPlaying(), "calm mode still burns")
-	for _, g in ipairs(f.fire.anims) do check(not g:IsPlaying(), "flames left playing") end
-	W.lightning = true
+	check(not f.mp5:IsShown(), "mp5 text off but shown")
+	W.mp5 = true
+	GetManaRegen = function() return MOCK.Secret(8.4), MOCK.Secret(1.2) end
 	ns:ApplySettings("appearance")
-	check(f.fire:IsShown(), "flames back on")
-	-- full: calms down to idle
+	check(FW.state == "bright" and not f.mp5:IsShown(), "secret mp5 shown")
+	GetManaRegen = nil
+	ns:ApplySettings("appearance")
+	check(FW.state == "bright" and not f.mp5:IsShown(), "no regen data: text shown")
+	-- full mana out of combat: fades away
 	MOCK.units.player.power = 100
 	MOCK.Fire("UNIT_POWER_UPDATE", "player", "MANA")
-	check(FW.state == "idle" and not f.burn:IsShown() and not f.breathe:IsPlaying(), "full mana: still burning")
-	for _, g in ipairs(f.fire.anims) do check(not g:IsPlaying(), "idle: flames left playing") end
-	W.hideIdle = true
-	ns:ApplySettings("appearance")
-	check(FW.state == nil and f.fadeOut:IsPlaying(), "hide at full mana: no fade")
+	check(FW.state == nil and f.fadeOut:IsPlaying(), "full mana: no fade out")
 	Settle()
-	check(not f:IsShown(), "faded but still shown")
-	-- the 5 s ended while away (timers late): the next look is right
-	Cast("player", 2050)
-	check(f:IsShown() and f.fadeIn:IsPlaying(), "showing again: no fade in")
-	MOCK.units.player.power = 40
-	MOCK.time = MOCK.time + 30
-	FW:Update()
-	check(FW.state == "burn", "late update")
-	MOCK.units.player.power = 100
-	FW:Update()
-	Settle()
+	check(not f:IsShown() and not f.glow.breathe:IsPlaying(), "faded but still shown")
 	MOCK.secretsOn = true
 	MOCK.units.player.power = 50
 	W.combatOnly = true
 	ns:ApplySettings("appearance")
 	Settle()
+	FS:Tick()
 end)
 
-step("5-second rule ring: only in combat (shows when a fight starts, fades out after; always while moved)", function()
-	local FW, W, M = ns.FiveSecondWidget, ns.db.appearance.fiveSecond.widget, ns.Mover
+step("5Sr bar: only in combat (shows when a fight starts, fades out after; full and secret mana never hide it in combat)", function()
+	local FW, FS = ns.FiveSecondWidget, ns.FiveSecond
 	local f = FW.frame
 	FW.spentAt = nil
 	check(FW.state == nil and not f:IsShown(), "out of combat: shown")
 	Cast("player", 2050)
-	check(FW.state == nil and not f:IsShown() and FW.spentAt, "out of combat: a spend showed it (it should only count)")
-	-- combat starts mid-count: the fill shows where it is
+	check(FW.state == nil and not f:IsShown() and FW.spentAt and not FW.counting, "out of combat: a spend showed it")
 	Later(1)
 	Fight(true)
-	check(FW.state == "count" and f:IsShown() and f.fadeIn:IsPlaying(), "combat start: no ring")
-	-- secret mana at or near full, in combat: never hidden, never faded as a whole
-	Later(5)
-	check(FW.state == "burn", "in combat after 5 s: " .. tostring(FW.state))
+	check(FW.state == "count" and f:IsShown() and f.fadeIn:IsPlaying() and math.abs(f.bar:GetValue() - 1) < 1e-6, "combat start mid-count")
+	Tick(4.1)
+	check(FW.state == "bright", "in combat after 5 s: " .. tostring(FW.state))
+	-- secret mana at full: the bar stays; only the glow is turned off by the client
 	UnitPowerPercent = function(_, _, _, curve) check(curve, "no curve") return MOCK.S(0) end
 	MOCK.Fire("UNIT_POWER_UPDATE", "player", "MANA")
-	check(FW.state == "burn" and f:IsShown() and f:GetAlpha() == 1, "secret full mana hid the ring in combat")
-	check(MOCK.isSecret(f.burn:GetAlpha()) and MOCK.isSecret(f.halo:GetAlpha()), "the burning isn't calmed by the client at full")
+	check(FW.state == "bright" and f:IsShown() and f:GetAlpha() == 1 and MOCK.isSecret(f.glow:GetAlpha()), "secret full mana hid the bar")
 	UnitPowerPercent = nil
 	MOCK.Fire("UNIT_POWER_UPDATE", "player", "MANA")
-	check(f:GetAlpha() == 1 and f.burn:GetAlpha() == 1, "without the curve it stays on")
-	-- readable full mana in combat: a dim ring, even with "hide at full mana"
+	check(f.glow:GetAlpha() == 1, "without the curve the glow stays")
+	-- readable full mana in combat: a dim full bar
 	MOCK.secretsOn = false
 	MOCK.units.player.power = 100
 	MOCK.Fire("UNIT_POWER_UPDATE", "player", "MANA")
-	check(W.hideIdle and FW.state == "idle" and f:IsShown(), "full mana in combat hid the ring")
+	check(FW.state == "full" and f:IsShown() and not f.glow:IsShown() and not f.mp5:IsShown(), "full mana in combat hid the bar")
 	MOCK.secretsOn = true
 	MOCK.units.player.power = 50
-	-- rapid casts: the fill restarts each time, nothing piles up
-	for i = 1, 12 do
-		Later(0.3)
+	-- rapid casts
+	for _ = 1, 12 do
+		Tick(0.3)
 		Cast("player", 2050)
 	end
-	check(FW.state == "count" and rawget(f.cd, "__cd")[1] == MOCK.time - FW.LEAD, "rapid casts")
-	MOCK.RunTimers()
-	check(#MOCK.timers <= 1, "timers pile up: " .. #MOCK.timers)
-	-- combat ends mid-fill: fades out, then gone
+	check(FW.state == "count" and f.bar:GetValue() == 0 and FS.driver:IsShown(), "rapid casts")
+	-- combat ends mid-count: fades out, the driver stops
 	Fight(false)
-	check(FW.state == nil and f:IsShown() and f.fadeOut:IsPlaying(), "combat end: snapped away instead of fading")
+	check(FW.state == nil and f.fadeOut:IsPlaying(), "combat end: snapped away instead of fading")
+	FS:Tick()
+	check(not FW.counting, "the bar still counts while hidden")
 	Settle()
 	check(not f:IsShown() and f:GetAlpha() == 1, "faded out but still shown")
-	-- a fight starting while it fades: back at once
 	Fight(true)
 	Fight(false)
 	Fight(true)
-	check(f:IsShown() and not f.fadeOut:IsPlaying() and f:GetAlpha() == 1, "a new fight during the fade")
+	check(f:IsShown() and not f.fadeOut:IsPlaying(), "a new fight during the fade")
 	Fight(false)
 	Settle()
 	-- moving always shows it, out of combat too
 	SlashCmdList.LATTICE("5sr move")
-	check(FW.state == "burn" and f:IsShown(), "moving out of combat: hidden")
+	check(FW.state == "bright" and f:IsShown(), "moving out of combat: hidden")
 	SlashCmdList.LATTICE("5sr lock")
 	Settle()
 	check(FW.state == nil and not f:IsShown(), "locked out of combat: still shown")
-	M:SetUnlocked(true, true)
-	check(FW.state == "burn" and f:IsShown(), "unlocked frames out of combat: ring hidden")
-	M:SetUnlocked(false, true)
-	Settle()
-	check(not f:IsShown(), "locked: still shown")
-	-- turned off: nothing, even in combat
+	-- off: nothing, even in combat
 	FW:SetEnabled(false)
 	Fight(true)
 	check(not f:IsShown(), "off but shown in combat")
@@ -1617,17 +1592,15 @@ step("5-second rule ring: only in combat (shows when a fight starts, fades out a
 	Settle()
 end)
 
-step("5-second rule ring: spends seen in combat (secret spell ID, secret cost, other unit names, secret power type)", function()
+step("5Sr bar: spends seen in combat (secret spell ID, secret cost, other unit names, secret power type)", function()
 	local FW, FS = ns.FiveSecondWidget, ns.FiveSecond
 	local f = FW.frame
 	local function Fresh() FW.spentAt = nil; FW:Update() end
 	Fight(true)
-	-- secret spell ID: read from the cast GUID
 	Fresh()
 	MOCK.Fire("UNIT_SPELLCAST_SUCCEEDED", "player", "Cast-3-4170-0-1-2050-0000ABCDEF", MOCK.S(2050))
 	check(FW.state == "count", "secret spell ID: not counted")
 	check(FS.SpellFromCast(MOCK.S("Cast-3-1-1-1-2050-0")) == nil and FS.SpellFromCast("junk") == nil, "bad cast GUIDs")
-	-- secret cost in combat: the cost read before answers
 	check(FS.SpellCostsMana(2050) == true, "cost not learned")
 	local get = C_Spell.GetSpellPowerCost
 	C_Spell.GetSpellPowerCost = function() return MOCK.S({ { type = 0, cost = 55 } }) end
@@ -1642,7 +1615,6 @@ step("5-second rule ring: spends seen in combat (secret spell ID, secret cost, o
 	Cast("player", 1)
 	check(FW.state ~= "count", "a free spell counted (never read)")
 	C_Spell.GetSpellPowerCost = get
-	-- learning the spellbook's costs out of combat
 	Fight(false)
 	local costs = C_Spell.GetSpellPowerCost
 	C_Spell.GetSpellPowerCost = function(id) if id == 774 then return { { type = 0, cost = 30 } } end return costs(id) end
@@ -1650,14 +1622,12 @@ step("5-second rule ring: spends seen in combat (secret spell ID, secret cost, o
 	C_Spell.GetSpellPowerCost = costs
 	check(FS.costKnown[774] == true, "spellbook costs not learned")
 	Fight(true)
-	-- you under another unit name, UnitIsUnit secret: the GUID tells
 	local isUnit = UnitIsUnit
 	UnitIsUnit = function() return MOCK.S(true) end
 	Fresh()
 	Cast("raid1", 2050)
 	UnitIsUnit = isUnit
 	check(FW.state == "count", "your cast under raid1: not counted")
-	-- your power type secret for a moment: still shown
 	local ptype = UnitPowerType
 	UnitPowerType = function() return MOCK.S(0), MOCK.S("MANA") end
 	FW:Update()
@@ -1665,32 +1635,18 @@ step("5-second rule ring: spends seen in combat (secret spell ID, secret cost, o
 	UnitPowerType = ptype
 	Fight(false)
 	Settle()
+	FS:Tick()
 end)
 
-step("5-second rule ring: mp5, the frames' line off, other classes, death, size", function()
+step("5Sr bar: the frames' line off, other classes, death, size, old ring settings dropped", function()
 	local FW, W, FS, C = ns.FiveSecondWidget, ns.db.appearance.fiveSecond.widget, ns.FiveSecond, ns.db.appearance.fiveSecond
 	local f = FW.frame
-	W.combatOnly = false
-	-- mp5: shown when readable, hidden when secret or missing
-	W.mp5 = true
-	GetManaRegen = function() return 2.4, 0.6 end
-	FW.spentAt = nil
-	ns:ApplySettings("appearance")
-	check(FW.state == "burn" and f.mp5:IsShown() and f.mp5:GetText() == "12 mp5", "mp5 while burning: " .. tostring(f.mp5:GetText()))
-	Cast("player", 2050)
-	check(f.mp5:GetText() == "3 mp5", "mp5 while casting: " .. tostring(f.mp5:GetText()))
-	GetManaRegen = function() return MOCK.S(2.4), MOCK.S(0.6) end
-	FW:Update()
-	check(not f.mp5:IsShown(), "secret mp5 shown")
-	GetManaRegen = nil
-	W.mp5 = false
-	-- the line on the frames off: the ring still counts
+	Fight(true)
 	wipe(FS.spent)
 	C.enabled = false
 	ns:ApplySettings("appearance")
 	Cast("player", 2050)
-	check(FW.state == "count" and next(FS.spent) == nil, "frames' line off: the ring didn't count")
-	-- the ring off: hidden, and casts leave it alone
+	check(FW.state == "count" and next(FS.spent) == nil, "frames' line off: the bar didn't count")
 	FW:SetEnabled(false)
 	check(FW.state == nil and not f:IsShown(), "off but shown")
 	FW.spentAt = nil
@@ -1698,115 +1654,76 @@ step("5-second rule ring: mp5, the frames' line off, other classes, death, size"
 	check(FW.state == nil and FW.spentAt == nil, "off, but a cast started it")
 	C.enabled = true
 	FW:SetEnabled(true)
-	-- rage, energy (druid forms): hidden
 	MOCK.units.player.ptype = "RAGE"
 	MOCK.Fire("UNIT_DISPLAYPOWER", "player")
 	check(FW.state == nil and not FW:Wanted(), "shown for rage")
-	Cast("player", 2050)
-	check(FW.state == nil, "rage: a cast showed it")
 	MOCK.units.player.ptype = nil
 	MOCK.Fire("UNIT_DISPLAYPOWER", "player")
-	-- dead: hidden, the spend forgotten
 	Cast("player", 2050)
 	MOCK.units.player.dead = true
 	MOCK.Fire("PLAYER_DEAD")
 	check(FW.state == nil and FW.spentAt == nil and not f:IsShown(), "dead: still shown")
 	MOCK.units.player.dead = false
 	MOCK.Fire("PLAYER_ALIVE")
-	-- a different size and colours; the label stays small
-	W.size = 96
-	W.fillColor = { 1, 0.5, 0, 1 }
+	W.width, W.height = 200, 14
 	ns:ApplySettings("appearance")
-	check(FW.anchor:GetWidth() == 96 and f.glow:GetWidth() == 192 and math.abs(f.fire:GetWidth() - 96 * 0.6) < 1e-6, "size not applied")
-	W.size = 8
+	check(FW.anchor:GetWidth() == 200 and FW.anchor:GetHeight() == 14, "size not applied")
+	W.width, W.height = 1, 1000
 	ns:ApplySettings("appearance")
-	check(FW.anchor:GetWidth() == 16, "below the smallest size")
-	W.size, W.fillColor = 32, { 0.31, 0.71, 1.00, 1 }
-	-- an old saved "seconds" choice is ignored and dropped
-	W.seconds = true
-	W.combatOnly = true
+	check(FW.anchor:GetWidth() == FW.MIN_W and FW.anchor:GetHeight() == FW.MAX_H, "size not clamped")
+	W.width, W.height = 120, 10
+	W.size, W.lightning, W.hideIdle = 64, true, false
 	ns:ApplySettings("appearance")
-	check(W.seconds == nil, "old seconds setting kept")
+	check(W.size == nil and W.lightning == nil and W.hideIdle == nil, "old ring settings kept")
+	-- saved by the ring: the upgrade drops its settings, keeps on/off and Only in combat
+	local sv = { schema = 4, profiles = { P = { appearance = { fiveSecond = { widget = {
+		enabled = false, combatOnly = false, size = 40, lightning = false, hideIdle = false, fillColor = { 1, 0, 0, 1 } } } } } }, chars = {} }
+	ns.Database:Migrate(sv)
+	local w = sv.profiles.P.appearance.fiveSecond.widget
+	check(w.enabled == false and w.combatOnly == false and w.size == nil and w.lightning == nil and w.hideIdle == nil and w.fillColor == nil,
+		"upgrade from the ring")
+	Fight(false)
 	Settle()
 	wipe(FS.spent)
 	FS:UpdateAll()
 	FS:Tick()
 end)
 
-step("5-second rule ring: move and lock (on its own, with the frames, combat locks it)", function()
+step("5Sr bar: move and lock (on its own, with the frames, combat locks it)", function()
 	local FW, M = ns.FiveSecondWidget, ns.Mover
 	local f, a = FW.frame, FW.anchor
 	MOCK.log = {}
 	SlashCmdList.LATTICE("5sr move")
-	check(M:IsSolo("fiveSecond") and not M:IsUnlocked(), "5sr move didn't move only the ring")
-	check(a.overlay:IsShown() and FW.state == "burn" and f:IsShown(), "moving: no box or no sample")
+	check(M:IsSolo("fiveSecond") and not M:IsUnlocked(), "5sr move didn't move only the bar")
+	check(a.overlay:IsShown() and FW.state == "bright" and f:IsShown(), "moving: no box or no sample")
 	check(table.concat(MOCK.log, " "):find("5sr lock", 1, true), "no hint how to lock")
-	-- drag and drop: saved
 	a.overlay:GetScript("OnDragStart")(a.overlay)
 	check(a.moving, "drag didn't start")
 	a.overlay:GetScript("OnDragStop")(a.overlay)
 	check(ns.db.positions.fiveSecond.y == 0, "position not saved")
 	SlashCmdList.LATTICE("5sr lock")
 	check(not M:IsSolo("fiveSecond") and not a.overlay:IsShown() and not f:IsMouseEnabled(), "5sr lock")
-	-- unlocking the frames moves it too; locking hides the box
 	M:SetUnlocked(true, true)
-	check(a.overlay:IsShown() and FW.state == "burn", "unlock frames: the ring has no box")
+	check(a.overlay:IsShown() and FW.state == "bright", "unlock frames: the bar has no box")
 	FW:SetEnabled(false)
-	check(not a.overlay:IsShown() and not f:IsShown(), "ring off: its box still shows")
+	check(not a.overlay:IsShown() and not f:IsShown(), "bar off: its box still shows")
 	FW:SetEnabled(true)
-	check(a.overlay:IsShown(), "ring on: no box")
+	check(a.overlay:IsShown(), "bar on: no box")
 	M:SetUnlocked(false, true)
 	check(not a.overlay:IsShown() and not FW:IsMoving(), "locked: still moving")
 	Settle()
-	-- combat locks a ring being moved
 	FW:SetMoving(true)
 	Fight(true)
-	check(not M:IsSolo("fiveSecond") and not a.overlay:IsShown(), "combat didn't lock the ring")
+	check(not M:IsSolo("fiveSecond") and not a.overlay:IsShown(), "combat didn't lock the bar")
 	check(FW:SetMoving(true) == false, "moved in combat")
 	Fight(false)
 	Settle()
-	-- reset positions brings it back
 	ns.db.positions = ns.Util.CopyTable(ns.Defaults.positions)
 	M:RestoreAll()
 	check(ns.db.positions.fiveSecond.y == -140, "reset")
 end)
 
-step("5-second rule ring: never any countdown numbers", function()
-	local FW = ns.FiveSecondWidget
-	local cd = FW.frame.cd
-	check(rawget(cd, "noCooldownCount") and rawget(cd, "noCCC") and rawget(cd, "noOCC"), "text addons not told to skip it")
-	check(rawget(cd, "__hideNumbers") == true, "the game's numbers are on")
-	-- another addon turns them on: off again at once
-	cd:SetHideCountdownNumbers(false)
-	check(rawget(cd, "__hideNumbers") == true, "numbers turned back on by someone else")
-	rawset(cd, "__hideNumbers", false) -- flipped behind our back: every new fill turns them off again
-	FW.spentAt = nil
-	Fight(true)
-	Cast("player", 2050)
-	check(FW.state == "count" and rawget(cd, "__hideNumbers") == true, "a new fill doesn't hide the numbers")
-	check(cd:GetCountdownFontString():GetAlpha() == 0, "the countdown text can show")
-	rawset(cd, "__hideNumbers", false)
-	cd:Show()
-	check(rawget(cd, "__hideNumbers") == true, "showing the cooldown doesn't hide the numbers")
-	Fight(false)
-	Settle()
-end)
-
-step("5-second rule ring: the size halved (64 -> 32); a saved 64 becomes 32, other sizes stay", function()
-	local sv = { schema = 4, profiles = {
-		Old = { appearance = { fiveSecond = { widget = { size = 64 } } } },
-		Mine = { appearance = { fiveSecond = { widget = { size = 48 } } } },
-		Blank = {}, Odd = { appearance = { fiveSecond = "x" } },
-	}, chars = {} }
-	ns.Database:Migrate(sv)
-	check(sv.schema == ns.Database.SCHEMA, "schema not bumped")
-	check(sv.profiles.Old.appearance.fiveSecond.widget.size == nil, "a saved 64 stays 64")
-	check(sv.profiles.Mine.appearance.fiveSecond.widget.size == 48, "a size the player set changed")
-	ns.Util.FillDefaults(sv.profiles.Old, ns.Defaults)
-	check(sv.profiles.Old.appearance.fiveSecond.widget.size == 32, "not 32 after the upgrade")
-end)
-
-step("5-second rule ring: chat, help, settings button and search", function()
+step("5Sr bar: chat, help, settings button and search", function()
 	local W = ns.db.appearance.fiveSecond.widget
 	SlashCmdList.LATTICE("5sr widget off")
 	check(W.enabled == false, "/lattice 5sr widget off")
@@ -1814,16 +1731,16 @@ step("5-second rule ring: chat, help, settings button and search", function()
 	check(W.enabled == true, "/lattice 5sr widget on")
 	SlashCmdList.LATTICE("5sr widget")
 	check(W.enabled == false, "/lattice 5sr widget flips it")
-	SlashCmdList.LATTICE("5sr ring on")
-	check(W.enabled == true, "/lattice 5sr ring on")
+	SlashCmdList.LATTICE("5sr bar on")
+	check(W.enabled == true, "/lattice 5sr bar on")
 	MOCK.log = {}
 	SlashCmdList.LATTICE("5sr widget maybe")
 	check(W.enabled == true and table.concat(MOCK.log, " "):find("Example", 1, true), "a wrong word: no example")
-	check(ns.db.appearance.fiveSecond.enabled == true, "ring commands changed the frames' line")
-	ns.app:HandleSlash("appearance.fiveSecond.widget.size 80")
+	check(ns.db.appearance.fiveSecond.enabled == true, "bar commands changed the frames' line")
+	ns.app:HandleSlash("appearance.fiveSecond.widget.width 160")
 	MOCK.RunTimers()
-	check(W.size == 80 and ns.FiveSecondWidget.anchor:GetWidth() == 80, "chat setting for the size")
-	ns.app:HandleSlash("appearance.fiveSecond.widget.size 32")
+	check(W.width == 160 and ns.FiveSecondWidget.anchor:GetWidth() == 160, "chat setting for the width")
+	ns.app:HandleSlash("appearance.fiveSecond.widget.width 120")
 	ns.app:HandleSlash("appearance.fiveSecond.widget.combatOnly off")
 	check(W.combatOnly == false, "chat setting for only in combat")
 	ns.app:HandleSlash("appearance.fiveSecond.widget.combatOnly on")
@@ -1831,35 +1748,29 @@ step("5-second rule ring: chat, help, settings button and search", function()
 	Settle()
 	MOCK.log = {}
 	ns.app:HandleSlash("help")
-	check(table.concat(MOCK.log, " "):find("widget on", 1, true), "help doesn't list the ring")
+	check(table.concat(MOCK.log, " "):find("widget on", 1, true), "help doesn't list the bar")
 	local O = ns.Options
 	O:Open("appearance")
-	-- the Move button flips moving on its own
 	local btn
 	for _, w in ipairs(MOCK.widgets) do
-		if rawget(w, "label") and w.label.GetText and w.label:GetText() == "Move the ring" then btn = w end
+		if rawget(w, "label") and w.label.GetText and w.label:GetText() == "Move the bar" then btn = w end
 	end
-	check(btn, "no Move the ring button")
+	check(btn, "no Move the bar button")
 	btn:GetScript("OnClick")(btn)
-	check(ns.Mover:IsSolo("fiveSecond") and btn.label:GetText() == "Lock the ring", "the button didn't start moving")
+	check(ns.Mover:IsSolo("fiveSecond") and btn.label:GetText() == "Lock the bar", "the button didn't start moving")
 	btn:GetScript("OnClick")(btn)
-	check(not ns.Mover:IsSolo("fiveSecond") and btn.label:GetText() == "Move the ring", "the button didn't lock")
+	check(not ns.Mover:IsSolo("fiveSecond") and btn.label:GetText() == "Move the bar", "the button didn't lock")
 	Settle()
-	for _, q in ipairs({ "5sr", "five second rule", "widget", "ring", "spirit", "mp5", "regen", "mana", "combat", "only in combat", "fire", "flame" }) do
+	for _, q in ipairs({ "5sr", "five second rule", "mana", "regen", "mp5", "bar", "spirit", "combat", "only in combat" }) do
 		check(#O:Search(q) >= 1, "search found nothing for " .. q)
 	end
 	local labels = {}
-	for _, r in ipairs(O:Search("widget")) do labels[r.entry.info.label] = true end
-	for _, l in ipairs({ "Show the 5-second rule ring", "Ring size", "Hide the ring at full mana", "Ring filling color", "Ring glow color" }) do
-		check(labels[l], "search 'widget' misses " .. l)
+	for _, r in ipairs(O:Search("5sr")) do labels[r.entry.info.label] = true end
+	for _, l in ipairs({ "Show the 5Sr bar", "Only in combat", "Bar width", "Bar height", "Show mp5 beside the bar",
+		"Counting up color", "Mana coming back color (bright)" }) do
+		check(labels[l], "search '5sr' misses " .. l)
 	end
-	check(not labels["Seconds left in the middle"], "the seconds setting is still there")
-	labels = {}
-	for _, r in ipairs(O:Search("flame")) do labels[r.entry.info.label] = true end
-	check(labels["Flame while mana comes back"], "search 'flame' misses the flame switch")
-	labels = {}
-	for _, r in ipairs(O:Search("combat")) do labels[r.entry.info.label] = true end
-	check(labels["Only in combat"], "search 'combat' misses Only in combat")
+	for l in pairs(labels) do check(not l:lower():find("ring", 1, true), "a ring setting is still there: " .. l) end
 	O:StopSearch()
 	O:Toggle()
 end)

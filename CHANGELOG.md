@@ -1,7 +1,7 @@
 # Lattice Party & Raid Frames
 
 ## Unreleased
-- New: the 5-second rule ring. A ring you can place anywhere: after you spend mana it fills up over the 5 seconds, then a gentle blue flame burns in it while your mana comes back, and it calms down at full mana. It shows in combat and fades out after (turn off "Only in combat" to keep it up). On for mana users; size, colours, mp5, the flame on or off and more on the Appearance page. Move it with Unlock frames or `/lattice 5sr move`; `/lattice 5sr widget off` turns it off.
+- New: the 5Sr bar, a thin bar you can place anywhere. After you spend mana it counts up over the 5 seconds; then it turns bright and shows your mp5 while your mana comes back. It shows in combat and fades out after (turn off "Only in combat" to keep it up). Width, height, colours and the mp5 text on the Appearance page. Move it with Unlock frames or `/lattice 5sr move`; `/lattice 5sr widget off` turns it off.
 
 ## v0.9.0 (2026-11-22)
 - New: the 5-second rule. After you spend mana, a thin line over your mana bar drains for 5 seconds (no Spirit regen), then glows green while your mana comes back. Shown for you and your group's healers; pick who, colours and a seconds number on the Appearance page, or type `/lattice 5sr`.

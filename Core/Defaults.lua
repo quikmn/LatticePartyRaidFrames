@@ -53,7 +53,7 @@ ns.Defaults = {
 		raid  = { point = "TOPLEFT", relPoint = "TOPLEFT", x = 30, y = -220 },
 		pets  = { point = "TOPLEFT", relPoint = "TOPLEFT", x = 30, y = -520 },
 		tanks = { point = "TOPLEFT", relPoint = "TOPLEFT", x = 30, y = -60 },
-		fiveSecond = { point = "CENTER", relPoint = "CENTER", x = 0, y = -140 }, -- the 5-second rule ring
+		fiveSecond = { point = "CENTER", relPoint = "CENTER", x = 0, y = -140 }, -- the 5Sr bar
 	},
 
 	appearance = {
@@ -74,12 +74,11 @@ ns.Defaults = {
 			enabled = true, who = "healers", seconds = false,
 			countColor = { 0.40, 0.72, 1.00, 1 },
 			regenColor = { 0.35, 0.90, 0.55, 1 },
-			-- the ring you place anywhere (Modules/FiveSecondWidget.lua): yours only, mana users only
+			-- the 5Sr bar you place anywhere (Modules/FiveSecondWidget.lua): yours only, mana users only
 			widget = {
-				-- lightning: the flame (named before it was a flame)
-				enabled = true, combatOnly = true, size = 32, hideIdle = true, mp5 = false, lightning = true,
-				fillColor = { 0.31, 0.71, 1.00, 1 },   -- #4fb4ff
-				burnColor = { 0.31, 0.71, 1.00, 1 },
+				enabled = true, combatOnly = true, width = 120, height = 10, mp5 = true,
+				fillColor = { 0.24, 0.42, 0.62, 1 },     -- muted blue while counting up
+				brightColor = { 0.42, 0.80, 1.00, 1 },   -- mana coming back
 			},
 		},
 
