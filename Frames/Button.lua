@@ -750,6 +750,7 @@ function B:UpdateAll(btn)
 	self:UpdateReady(btn)
 	if ns.Auras then ns.Auras:Update(btn) end
 	if ns.MissingBuff then ns.MissingBuff:Update(btn) end
+	if ns.FiveSecond then ns.FiveSecond:Update(btn) end
 end
 
 function B:UpdateAllButtons()

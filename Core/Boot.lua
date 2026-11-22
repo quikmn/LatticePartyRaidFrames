@@ -214,6 +214,23 @@ app:Command("debug", "debug", "debug messages on or off", function()
 	ns:Print("debug " .. (ns.db.debug and "on" or "off"))
 end)
 app:Command("feedback", "feedback", "a link for bugs and ideas", function() ns.ShowFeedback() end, { "bug" })
+-- /lattice 5sr: on/off (no word: flip), or who it shows for
+local FIVE_WHO = { me = "only you", healers = "you and healers", all = "everyone who uses mana" }
+app:Command("5sr", "5sr [on|off|me|healers|all]", "the 5-second rule: on, off, or who it shows for", function(arg)
+	local C = ns.db.appearance.fiveSecond
+	arg = (arg or ""):gsub("^%s+", ""):gsub("%s+$", "")
+	if arg == "" or arg == "toggle" then C.enabled = not C.enabled
+	elseif arg == "on" then C.enabled = true
+	elseif arg == "off" then C.enabled = false
+	elseif FIVE_WHO[arg] then C.enabled, C.who = true, arg
+	else
+		ns:Print("|cffff6666Unknown choice \"" .. ns.Escape(arg) .. "\".|r Example: /lattice 5sr healers (or on, off, me, all)")
+		return
+	end
+	ns:ApplySettings("appearance")
+	app:Refresh()
+	ns:Print("5-second rule: " .. (C.enabled and ("on, for " .. (FIVE_WHO[C.who] or C.who)) or "off"))
+end, { "fsr" })
 
 SLASH_LATTICE1 = "/lattice"
 SLASH_LATTICE2 = "/lat"

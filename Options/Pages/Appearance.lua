@@ -55,6 +55,31 @@ O:RegisterPage("appearance", "Appearance", nil, function(s)
 	W.Dropdown(s, Bind("appearance.powerRules.RAGE", "appearance", { label = "Rage (warriors, druids in Bear Form)", items = RULES, width = 300 }))
 	W.Dropdown(s, Bind("appearance.powerRules.ENERGY", "appearance", { label = "Energy (rogues, druids in Cat Form)", items = RULES, width = 300 }))
 
+	W.Header(s, "Mana: 5-second rule",
+		"After a player spends mana, Spirit stops restoring it for 5 seconds. A thin line over the mana bar drains for those 5 seconds, then glows while mana comes back.",
+		{ "5sr", "fsr", "five second rule", "mana regen", "spirit", "regeneration" })
+	local function noFive() return not A().fiveSecond.enabled end
+	local FIVE_KEYS = { "5sr", "five second rule", "mana regen", "spirit" }
+	W.Toggle(s, Bind("appearance.fiveSecond.enabled", "appearance", {
+		label = "Show the 5-second rule", keywords = FIVE_KEYS,
+		desc = "Shown on your own frame, and on other players' frames as picked below.",
+	}))
+	W.Dropdown(s, Bind("appearance.fiveSecond.who", "appearance", {
+		label = "Show it for", keywords = FIVE_KEYS, width = 300,
+		desc = "Healers: players with the healer role, or priests, druids, shamans and paladins when the group has no roles set.",
+		items = { { value = "me", text = "Only me" }, { value = "healers", text = "Me and healers" }, { value = "all", text = "Everyone who uses mana" } },
+		disabled = noFive,
+	}))
+	W.Toggle(s, Bind("appearance.fiveSecond.seconds", "appearance", {
+		label = "Seconds left as a number", keywords = FIVE_KEYS, disabled = noFive,
+	}))
+	W.Color(s, Bind("appearance.fiveSecond.countColor", "appearance", {
+		label = "Countdown color", keywords = FIVE_KEYS, disabled = noFive,
+	}))
+	W.Color(s, Bind("appearance.fiveSecond.regenColor", "appearance", {
+		label = "Mana coming back color", keywords = FIVE_KEYS, disabled = noFive,
+	}))
+
 	W.Header(s, "Border and highlights")
 	W.Slider(s, Bind("appearance.borderSize", "appearance", { label = "Border thickness", min = 0, max = 4, step = 1 }))
 	W.Color(s, Bind("appearance.borderColor", "appearance", {

@@ -67,6 +67,7 @@ local function MakeFake(i)
 	big:Hide()
 	v.fakeDispelIcon = big
 	btn.data = FakeData(i)
+	btn.index = i
 	fakes[i] = btn
 	return btn
 end
@@ -116,6 +117,7 @@ local function Render(btn)
 	local pc = A.powerColorByType and ((PowerBarColor and PowerBarColor[token]) or FAKE_POWER_COLOR[token])
 		or { r = 0.30, g = 0.50, b = 0.85 }
 	v.power:SetStatusBarColor(pc.r, pc.g, pc.b)
+	if ns.FiveSecond then ns.FiveSecond:RenderFake(btn, d, token, btn.index) end
 
 	v.name:SetText(d.name:sub(1, A.nameLength))
 	local dim = A.dimWhenGone and (d.dead or d.offline) and 0.55 or 1

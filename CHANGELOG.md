@@ -1,6 +1,7 @@
 # Lattice Party & Raid Frames
 
 ## Unreleased
+- New: the 5-second rule. After you spend mana, a thin line over your mana bar drains for 5 seconds (no Spirit regen), then glows green while your mana comes back. Shown for you and your group's healers; pick who, colours and a seconds number on the Appearance page, or type `/lattice 5sr`.
 - Fix: after the latest WoW Forever client update, your character's settings (profile, click-casting) could be saved under the wrong name. They now stay with your character.
 
 ## v0.8.0 (2026-11-21)

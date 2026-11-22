@@ -68,6 +68,12 @@ ns.Defaults = {
 		-- Who gets a power bar, by power type: always | tank | tankheal (tanks and healers) | never.
 		-- Druids switch live: mana in caster form, rage in Bear Form, energy in Cat Form.
 		powerRules = { MANA = "always", RAGE = "tank", ENERGY = "never", OTHER = "always" },
+		-- 5-second rule (Modules/FiveSecond.lua): who = me | healers (you and healers) | all (everyone with mana)
+		fiveSecond = {
+			enabled = true, who = "healers", seconds = false,
+			countColor = { 0.40, 0.72, 1.00, 1 },
+			regenColor = { 0.35, 0.90, 0.55, 1 },
+		},
 
 		nameSize = 12,
 		nameOutline = true,

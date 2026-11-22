@@ -1196,6 +1196,246 @@ step("AI help: /lattice apply previews, changes only listed settings with valid 
 	MOCK.RunTimers()
 end)
 
+-- 5-second rule: mana spells start it (seen from the cast + the spell's mana cost, never from mana values)
+local COSTS = {
+	[2050] = { { type = 0, cost = 55 } },        -- Lesser Heal
+	[1] = {},                                    -- a free spell
+	[5019] = { { type = 0, cost = 0 } },         -- Shoot (wand)
+	[75] = { { type = 0, cost = 10 } },          -- Auto Shot (ignored even if the client lists a cost)
+	[100] = { { type = 1, cost = 10 } },         -- a rage spell
+	[7777] = "secret fields",
+	[8888] = "error",
+	[9999] = "secret table",
+}
+local function MockCosts(id)
+	local c = COSTS[id]
+	if c == "error" then error("bad spell") end
+	if c == "secret table" then return MOCK.S({ { type = 0, cost = 50 } }) end
+	if c == "secret fields" then return { { type = MOCK.S(0), cost = MOCK.S(50) } } end
+	return c
+end
+local function ButtonFor(unit)
+	for btn in pairs(ns.Buttons.byUnit[unit] or {}) do
+		if btn.unit == unit then return btn end
+	end
+end
+local function Tick(dt)
+	MOCK.time = MOCK.time + dt
+	local d = ns.FiveSecond.driver
+	if d:IsShown() then d:GetScript("OnUpdate")(d, dt) end
+end
+local function Cast(unit, id) MOCK.Fire("UNIT_SPELLCAST_SUCCEEDED", unit, "Cast-1", id) end
+
+step("5-second rule: mana spells start it; free spells, Shoot, Auto Shot and secret cast info don't (and don't error)", function()
+	local FS = ns.FiveSecond
+	C_Spell.GetSpellPowerCost = MockCosts
+	check(FS.SpellCostsMana(2050) == true, "a mana spell")
+	for _, id in ipairs({ 1, 5019, 75, 100, 7777, 8888, 9999, 424242 }) do
+		check(FS.SpellCostsMana(id) == false, "not a mana spend: " .. id)
+	end
+	check(FS.SpellCostsMana(MOCK.S(2050)) == false and FS.SpellCostsMana(nil) == false, "a secret spell ID")
+	local C = ns.db.appearance.fiveSecond
+	check(C.enabled == true and C.who == "healers" and C.seconds == false, "defaults: on, you and healers, no number")
+
+	MOCK.SetGroup(5, false)
+	MOCK.Fire("GROUP_ROSTER_UPDATE")
+	MOCK.UpdateAllHeaders()
+	MOCK.RunTimers()
+	wipe(FS.spent)
+	local me = ButtonFor("player")
+	check(me, "no frame for the player")
+	check(not FS.driver:IsShown(), "the driver runs while nothing counts")
+	for _, id in ipairs({ 1, 5019, 75, 100, 7777, 8888, 9999 }) do Cast("player", id) end
+	Cast("player", MOCK.S(2050))
+	Cast("target", 2050)
+	Cast("nameplate1", 2050)
+	check(me.fsrPhase == nil and next(FS.spent) == nil and not FS.driver:IsShown(), "something that isn't a mana spend started it")
+	Cast("player", 2050)
+	check(me.fsrPhase == "count" and FS.driver:IsShown(), "a mana spell didn't start the countdown")
+	local f = me.visual.fsr
+	check(f and f:IsShown() and f.bar:IsShown() and math.abs(f.bar:GetValue() - 5) < 1e-6, "the bar isn't full at the start")
+	check(not f.text:IsShown(), "seconds number shown while it's off")
+	-- a member whose GUID is secret: nothing, no error
+	local guid = UnitGUID
+	UnitGUID = function(u) if u == "party3" then return MOCK.S("x") end return guid(u) end
+	MOCK.units.party3.role = "NONE"
+	Cast("party3", 2050)
+	UnitGUID = guid
+	check(ButtonFor("party3").fsrPhase == nil, "a secret GUID started it")
+	MOCK.units.party3.role = "DAMAGER"
+end)
+
+step("5-second rule: drains over 5 seconds, then shows mana coming back until full", function()
+	local FS, C = ns.FiveSecond, ns.db.appearance.fiveSecond
+	local me = ButtonFor("player")
+	local f = me.visual.fsr
+	Tick(2)
+	check(me.fsrPhase == "count" and math.abs(f.bar:GetValue() - 3) < 1e-6, "after 2 s: " .. tostring(f.bar:GetValue()))
+	C.seconds = true
+	ns:ApplySettings("appearance")
+	check(f.text:IsShown() and f.text:GetText() == "3", "seconds number: " .. tostring(f.text:GetText()))
+	-- a second spend starts it over
+	Cast("player", 2050)
+	check(math.abs(f.bar:GetValue() - 5) < 1e-6, "a new spend didn't restart the countdown")
+	Tick(5.1)
+	check(me.fsrPhase == "regen" and f.regen:IsShown() and not f.bar:IsShown() and not f.text:IsShown(), "after 5 s: expected mana coming back")
+	check(not FS.driver:IsShown() and next(FS.active) == nil, "the driver keeps running after the countdown")
+	-- mana is secret (combat, instances): keep showing; with the client's percent curve, the glow's alpha comes from it
+	UnitPowerPercent = function() return MOCK.S(1) end
+	MOCK.Fire("UNIT_POWER_UPDATE", "player", "MANA")
+	check(me.fsrPhase == "regen" and f:IsShown(), "secret mana hid the glow")
+	UnitPowerPercent = nil
+	MOCK.Fire("UNIT_POWER_UPDATE", "player", "MANA")
+	check(me.fsrPhase == "regen" and f:GetAlpha() == 1, "without the curve the glow stays on")
+	-- readable and not full: still on; full: off, and the spend is forgotten
+	MOCK.secretsOn = false
+	MOCK.units.player.power = 60
+	MOCK.Fire("UNIT_POWER_UPDATE", "player", "MANA")
+	check(me.fsrPhase == "regen", "not full yet")
+	MOCK.units.player.power = 100
+	MOCK.Fire("UNIT_POWER_UPDATE", "player", "MANA")
+	check(me.fsrPhase == nil and not f:IsShown() and next(FS.spent) == nil, "full mana didn't hide it")
+	MOCK.secretsOn = true
+	MOCK.units.player.power = 50
+	-- in combat, unreadable: shown until combat ends
+	Cast("player", 2050)
+	Tick(6)
+	check(me.fsrPhase == "regen", "expected mana coming back")
+	MOCK.secretsOn = false
+	MOCK.units.player.power = 100
+	MOCK.Fire("PLAYER_REGEN_ENABLED")
+	check(me.fsrPhase == nil, "full mana after combat didn't hide it")
+	MOCK.secretsOn = true
+	MOCK.units.player.power = 50
+	-- dying ends it
+	Cast("player", 2050)
+	MOCK.units.player.dead = true
+	FS:Update(me)
+	check(me.fsrPhase == nil and next(FS.spent) == nil, "a dead player still counts")
+	MOCK.units.player.dead = false
+	C.seconds = false
+	ns:ApplySettings("appearance")
+	FS:Tick()
+	check(not FS.driver:IsShown(), "driver left running")
+end)
+
+step("5-second rule: who it shows for, settings, chat and search", function()
+	local FS, C = ns.FiveSecond, ns.db.appearance.fiveSecond
+	wipe(FS.spent)
+	-- party1 warrior tank (rage), party2 mage, party3 druid (no role), party4 rogue (energy)
+	MOCK.units.party1.ptype = "RAGE"
+	MOCK.units.party4.ptype = "ENERGY"
+	MOCK.units.party3.role = "NONE"
+	local function phases()
+		local out = {}
+		for _, u in ipairs({ "party1", "party2", "party3", "party4" }) do
+			wipe(FS.spent)
+			Cast(u, 2050)
+			out[#out + 1] = ButtonFor(u).fsrPhase or "-"
+		end
+		wipe(FS.spent)
+		FS:UpdateAll()
+		return table.concat(out, " ")
+	end
+	local p = phases()
+	check(p == "- - count -", "healers (druid with no role): " .. p)
+	C.who = "all"
+	p = phases()
+	check(p == "- count count -", "everyone with mana: " .. p)
+	C.who = "me"
+	p = phases()
+	check(p == "- - - -", "only me: " .. p)
+	Cast("player", 2050)
+	check(ButtonFor("player").fsrPhase == "count", "only me: my frame")
+	C.enabled = false
+	ns:ApplySettings("appearance")
+	check(ButtonFor("player").fsrPhase == nil and not ButtonFor("player").visual.fsr:IsShown(), "turning it off didn't hide it")
+	Cast("player", 2050)
+	check(ButtonFor("player").fsrPhase == nil, "off, but a cast started it")
+	C.enabled, C.who = true, "healers"
+	-- a druid healer shifting out of mana form: hidden
+	MOCK.units.party3.role = "HEALER"
+	Cast("party3", 2050)
+	check(ButtonFor("party3").fsrPhase == "count", "healer role")
+	MOCK.units.party3.ptype = "ENERGY"
+	MOCK.Fire("UNIT_DISPLAYPOWER", "party3")
+	check(ButtonFor("party3").fsrPhase == nil, "cat form still shows it")
+	MOCK.units.party3.ptype, MOCK.units.party3.role = nil, "DAMAGER"
+	MOCK.units.party1.ptype, MOCK.units.party4.ptype = nil, nil
+	wipe(FS.spent)
+	FS:UpdateAll()
+	FS:Tick()
+
+	-- chat: the shared settings syntax
+	local app = ns.app
+	app:HandleSlash("appearance.fiveSecond.who all")
+	check(C.who == "all", "chat didn't set who: " .. tostring(C.who))
+	app:HandleSlash("appearance.fiveSecond.seconds on")
+	check(C.seconds == true, "chat didn't turn the number on")
+	app:HandleSlash("appearance.fiveSecond.who healers")
+	app:HandleSlash("appearance.fiveSecond.seconds off")
+	MOCK.RunTimers()
+	check(C.who == "healers" and C.seconds == false, "chat: back to defaults")
+	-- the typed command goes through lower case: keys still match
+	SlashCmdList.LATTICE("appearance.fiveSecond.who all")
+	check(C.who == "all", "typed (lower-cased) setting key didn't match")
+	SlashCmdList.LATTICE("5sr off")
+	check(C.enabled == false, "/lattice 5sr off")
+	SlashCmdList.LATTICE("5sr")
+	check(C.enabled == true, "/lattice 5sr flips it")
+	SlashCmdList.LATTICE("5sr healers")
+	check(C.enabled and C.who == "healers", "/lattice 5sr healers")
+	MOCK.log = {}
+	SlashCmdList.LATTICE("5sr sometimes")
+	check(C.who == "healers" and table.concat(MOCK.log, " "):find("Example", 1, true), "a wrong word: no example given")
+	MOCK.log = {}
+	ns.app:HandleSlash("help")
+	check(table.concat(MOCK.log, " "):find("5sr", 1, true), "help doesn't list 5sr")
+	ns.app:HandleSlash("ai")
+	local ai = LatticeAiHelpWindow.box:GetText()
+	check(ai:find("- appearance.fiveSecond.who: Show it for. Choice: me = Only me; healers = Me and healers; all = Everyone who uses mana", 1, true)
+		and ai:find("- appearance.fiveSecond.countColor:", 1, true), "AI help lacks the 5-second rule settings")
+	LatticeAiHelpWindow:Hide()
+
+	-- the settings window: found by its names
+	local O = ns.Options
+	O:Open("appearance")
+	for _, q in ipairs({ "5sr", "five second rule", "mana regen", "spirit", "countdown color" }) do
+		check(#O:Search(q) >= 1, "search found nothing for " .. q)
+	end
+	local labels = {}
+	for _, r in ipairs(O:Search("5sr")) do labels[r.entry.info.label] = true end
+	for _, l in ipairs({ "Show the 5-second rule", "Show it for", "Seconds left as a number", "Countdown color", "Mana coming back color" }) do
+		check(labels[l], "search '5sr' misses " .. l)
+	end
+	O:StopSearch()
+	O:Toggle()
+end)
+
+step("5-second rule: raid frames match by player, the preview shows samples", function()
+	local FS = ns.FiveSecond
+	MOCK.SetGroup(10, true)
+	MOCK.Fire("GROUP_ROSTER_UPDATE")
+	MOCK.UpdateAllHeaders()
+	MOCK.RunTimers()
+	wipe(FS.spent)
+	-- the game names you "player" in the event; your raid frame is "raid1"
+	Cast("player", 2050)
+	check(ButtonFor("raid1").fsrPhase == "count", "your raid frame didn't start")
+	Tick(5.1)
+	check(ButtonFor("raid1").fsrPhase == "regen" and not FS.driver:IsShown(), "raid: expected mana coming back")
+	wipe(FS.spent)
+	FS:UpdateAll()
+	ns.TestMode:Start(5)
+	local shown = 0
+	for _, w in ipairs(MOCK.widgets) do
+		if rawget(w, "fake") and rawget(w, "visual") and w.visual.fsr and w.visual.fsr:IsVisible() then shown = shown + 1 end
+	end
+	check(shown >= 1, "the preview shows no sample")
+	check(not FS.driver:IsShown(), "preview samples run the driver")
+	ns.TestMode:Stop()
+end)
+
 step("logout strips defaults", function()
 	MOCK.Fire("PLAYER_LOGOUT")
 	local p = LatticeDB.profiles.Default
