@@ -80,6 +80,51 @@ O:RegisterPage("appearance", "Appearance", nil, function(s)
 		label = "Mana coming back color", keywords = FIVE_KEYS, disabled = noFive,
 	}))
 
+	W.Header(s, "Mana: 5-second rule ring",
+		"Your own ring to place anywhere: it fills for the 5 seconds after you spend mana, then burns bright while your mana comes back.",
+		{ "5sr", "five second rule", "mana", "regen", "widget", "spirit", "ring", "weak aura" })
+	local RING_KEYS = { "5sr", "five second rule", "mana", "regen", "widget", "spirit", "ring" }
+	local function R() return A().fiveSecond.widget end
+	local function noRing() return not R().enabled end
+	W.Toggle(s, Bind("appearance.fiveSecond.widget.enabled", "appearance", {
+		label = "Show the 5-second rule ring", keywords = RING_KEYS,
+		desc = "Shown when you use mana. Separate from the line on the frames above.",
+	}))
+	local move
+	move = W.Button(nil, "Move the ring", function()
+		local FW = ns.FiveSecondWidget
+		FW:SetMoving(not ns.Mover:IsSolo("fiveSecond"))
+		move:Refresh()
+	end, 180)
+	function move:Refresh()
+		self:SetText(ns.Mover:IsSolo("fiveSecond") and "Lock the ring" or "Move the ring")
+	end
+	s:Add(move, 26)
+	W.Note(s, "Or click |cffffffffUnlock frames|r at the bottom left: the ring moves with everything else.")
+	W.Slider(s, Bind("appearance.fiveSecond.widget.size", "appearance", {
+		label = "Ring size", keywords = { "scale", "5sr", "ring", "widget" }, min = 32, max = 160, step = 4, disabled = noRing,
+	}))
+	W.Toggle(s, Bind("appearance.fiveSecond.widget.hideIdle", "appearance", {
+		label = "Hide the ring at full mana", keywords = RING_KEYS, disabled = noRing,
+		desc = "Off: a dim ring stays on screen.",
+	}))
+	W.Toggle(s, Bind("appearance.fiveSecond.widget.lightning", "appearance", {
+		label = "Lightning while mana comes back", keywords = { "5sr", "ring", "effects", "calm", "animation", "sparks" }, disabled = noRing,
+		desc = "Off: a calm glow only.",
+	}))
+	W.Toggle(s, Bind("appearance.fiveSecond.widget.seconds", "appearance", {
+		label = "Seconds left in the middle", keywords = RING_KEYS, disabled = noRing,
+	}))
+	W.Toggle(s, Bind("appearance.fiveSecond.widget.mp5", "appearance", {
+		label = "Mana regen (mp5) under the ring", keywords = { "5sr", "ring", "mp5", "mana per 5", "regen" }, disabled = noRing,
+	}))
+	W.Color(s, Bind("appearance.fiveSecond.widget.fillColor", "appearance", {
+		label = "Ring filling color", keywords = RING_KEYS, disabled = noRing,
+	}))
+	W.Color(s, Bind("appearance.fiveSecond.widget.burnColor", "appearance", {
+		label = "Ring glow color", keywords = RING_KEYS, disabled = noRing,
+	}))
+
 	W.Header(s, "Border and highlights")
 	W.Slider(s, Bind("appearance.borderSize", "appearance", { label = "Border thickness", min = 0, max = 4, step = 1 }))
 	W.Color(s, Bind("appearance.borderColor", "appearance", {

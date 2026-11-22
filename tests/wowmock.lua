@@ -184,8 +184,13 @@ function impl:SetID(id) self.__id = id end
 function impl:IsMouseOver() return false end
 function impl:GetStatusBarColor() return 1, 1, 1, 1 end
 function impl:GetVertexColor() return 1, 1, 1, 1 end
-function impl:Play() end
-function impl:IsPlaying() return false end
+function impl:Play() self.__playing = true end
+function impl:Stop() self.__playing = false end
+function impl:IsPlaying() return self.__playing or false end
+function impl:EnableMouse(on) self.__mouse = on and true or false end
+function impl:IsMouseEnabled() return self.__mouse or false end
+function impl:SetCooldown(start, duration) self.__cd = { start, duration } end
+function impl:Clear() self.__cd = nil end
 function impl:GetRegions() return end
 function impl:SetSmoothedValue(v) self.__value = v end
 

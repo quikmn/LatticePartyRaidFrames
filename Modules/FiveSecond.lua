@@ -77,6 +77,7 @@ local function UsesMana(unit)
 	local _, token = UnitPowerType(unit)
 	return Plain(token, nil) == "MANA"
 end
+FS.UsesMana = UsesMana
 
 -- Whether this player's frame shows the rule (settings + uses mana right now).
 function FS:Wants(unit)
@@ -98,10 +99,15 @@ local function ForGUID(guid, fn)
 	end
 end
 
+-- Your own spends also go to the 5-second rule ring (Modules/FiveSecondWidget.lua), which has its own on/off.
 function FS:OnCast(unit, spellID)
 	local C = Settings()
-	if not C or not C.enabled or not GroupUnit(unit) then return end
+	if not C or not GroupUnit(unit) then return end
+	local ring = FS.Widget and FS.Widget:Enabled() and IsMe(unit)
+	if not C.enabled and not ring then return end
 	if not FS.SpellCostsMana(spellID) then return end
+	if ring then FS.Widget:OnSpend(GetTime()) end
+	if not C.enabled then return end
 	local guid = GUIDOf(unit)
 	if not guid or not self:Wants(unit) then return end
 	FS.spent[guid] = GetTime()

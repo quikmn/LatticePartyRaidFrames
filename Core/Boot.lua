@@ -38,6 +38,7 @@ function ns:ApplySettingsNow(scope)
 	if scope == "appearance" or scope == "layout" or scope == "all" then
 		ns.Buttons:ApplyLayoutAll()
 		ns.Buttons:UpdateAllButtons()
+		if ns.FiveSecondWidget then ns.FiveSecondWidget:Apply() end
 	end
 	if scope == "auras" or scope == "all" then
 		ns.Auras:Refresh()
@@ -214,11 +215,36 @@ app:Command("debug", "debug", "debug messages on or off", function()
 	ns:Print("debug " .. (ns.db.debug and "on" or "off"))
 end)
 app:Command("feedback", "feedback", "a link for bugs and ideas", function() ns.ShowFeedback() end, { "bug" })
--- /lattice 5sr: on/off (no word: flip), or who it shows for
+-- /lattice 5sr: on/off (no word: flip), or who it shows for; the ring: widget on|off, move, lock
 local FIVE_WHO = { me = "only you", healers = "you and healers", all = "everyone who uses mana" }
-app:Command("5sr", "5sr [on|off|me|healers|all]", "the 5-second rule: on, off, or who it shows for", function(arg)
+local function ringCommand(arg)
+	local FW = ns.FiveSecondWidget
+	local word, rest = arg:match("^(%S+)%s*(.-)$")
+	if word == "move" or word == "unlock" then
+		if FW:SetMoving(true) then ns:Print("5-second rule ring: drag it, then type /lattice 5sr lock.") end
+	elseif word == "lock" then
+		FW:SetMoving(false)
+		ns:Print("5-second rule ring: locked.")
+	elseif word == "widget" or word == "ring" then
+		local C = ns.db.appearance.fiveSecond.widget
+		if rest == "" or rest == "toggle" then FW:SetEnabled(not C.enabled)
+		elseif rest == "on" or rest == "off" then FW:SetEnabled(rest == "on")
+		else
+			ns:Print("|cffff6666Unknown choice \"" .. ns.Escape(rest) .. "\".|r Example: /lattice 5sr widget on (or off)")
+			return true
+		end
+		app:Refresh()
+		ns:Print("5-second rule ring: " .. (C.enabled and "on" or "off"))
+	else
+		return false
+	end
+	return true
+end
+
+app:Command("5sr", "5sr [on|off|me|healers|all|widget on|off|move|lock]", "the 5-second rule: on, off, who it shows for; the ring: widget on/off, move, lock", function(arg)
 	local C = ns.db.appearance.fiveSecond
 	arg = (arg or ""):gsub("^%s+", ""):gsub("%s+$", "")
+	if ringCommand(arg) then return end
 	if arg == "" or arg == "toggle" then C.enabled = not C.enabled
 	elseif arg == "on" then C.enabled = true
 	elseif arg == "off" then C.enabled = false

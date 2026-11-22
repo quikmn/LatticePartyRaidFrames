@@ -34,7 +34,7 @@ function Mover:GetAnchor(key, label)
 	overlay:EnableMouse(true)
 	overlay:RegisterForDrag("LeftButton")
 	overlay:SetScript("OnDragStart", function()
-		if unlocked and not InCombatLockdown() then
+		if (unlocked or a.solo) and not InCombatLockdown() then
 			a:StartMoving()
 			a.moving = true
 		end
@@ -83,6 +83,34 @@ end
 
 function Mover:IsUnlocked() return unlocked end
 
+-- An anchor can say when it has nothing to move (a.wanted() false: its box stays hidden while unlocked).
+local function Wanted(a) return not a.wanted or a.wanted() and true or false end
+
+local function ShowOverlay(a)
+	a.overlay:SetShown((unlocked or a.solo) and Wanted(a))
+end
+
+function Mover:RefreshOverlays()
+	for _, a in pairs(anchors) do ShowOverlay(a) end
+end
+
+-- Move one box on its own (the 5-second rule ring), without unlocking the frames. Combat locks it again.
+function Mover:SetSolo(key, on)
+	local a = anchors[key]
+	if not a then return false end
+	if on and InCombatLockdown() then
+		ns:Print("Can't move it in combat.")
+		return false
+	end
+	a.solo = on and true or nil
+	if not on then self:StopDrag(a) end
+	ShowOverlay(a)
+	ns:Fire("MoverChanged", unlocked)
+	return true
+end
+
+function Mover:IsSolo(key) return anchors[key] and anchors[key].solo or false end
+
 -- on = true unlocks, false locks. quiet: no chat line (combat locking prints its own).
 function Mover:SetUnlocked(on, quiet)
 	on = on and true or false
@@ -96,8 +124,8 @@ function Mover:SetUnlocked(on, quiet)
 	end
 	unlocked = on
 	for _, a in pairs(anchors) do
-		if not on then self:StopDrag(a) end
-		a.overlay:SetShown(on)
+		if not on and not a.solo then self:StopDrag(a) end
+		ShowOverlay(a)
 	end
 	-- Show preview frames while unlocked so there's something to see when solo.
 	if on and not ns.TestMode:IsActive() then
@@ -119,6 +147,9 @@ function Mover:Toggle()
 end
 
 ns:RegisterEvent("PLAYER_REGEN_DISABLED", function()
+	for key, a in pairs(anchors) do
+		if a.solo then Mover:SetSolo(key, false) end
+	end
 	if unlocked then
 		Mover:SetUnlocked(false, true)
 		ns:Print("Frames locked: combat started.")

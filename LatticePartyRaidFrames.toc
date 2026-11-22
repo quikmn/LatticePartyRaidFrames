@@ -34,6 +34,7 @@ Modules\ClickCast.lua
 Modules\HoverCast.lua
 Modules\UnitMenu.lua
 Modules\Mover.lua
+Modules\FiveSecondWidget.lua
 
 Options\Widgets.lua
 Options\Window.lua

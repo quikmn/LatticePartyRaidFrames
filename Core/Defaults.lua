@@ -53,6 +53,7 @@ ns.Defaults = {
 		raid  = { point = "TOPLEFT", relPoint = "TOPLEFT", x = 30, y = -220 },
 		pets  = { point = "TOPLEFT", relPoint = "TOPLEFT", x = 30, y = -520 },
 		tanks = { point = "TOPLEFT", relPoint = "TOPLEFT", x = 30, y = -60 },
+		fiveSecond = { point = "CENTER", relPoint = "CENTER", x = 0, y = -140 }, -- the 5-second rule ring
 	},
 
 	appearance = {
@@ -73,6 +74,12 @@ ns.Defaults = {
 			enabled = true, who = "healers", seconds = false,
 			countColor = { 0.40, 0.72, 1.00, 1 },
 			regenColor = { 0.35, 0.90, 0.55, 1 },
+			-- the ring you place anywhere (Modules/FiveSecondWidget.lua): yours only, mana users only
+			widget = {
+				enabled = true, size = 64, hideIdle = true, seconds = false, mp5 = false, lightning = true,
+				fillColor = { 0.31, 0.71, 1.00, 1 },   -- #4fb4ff
+				burnColor = { 0.31, 0.71, 1.00, 1 },
+			},
 		},
 
 		nameSize = 12,
