@@ -3,7 +3,7 @@
     python -P tools/fivesecond_art.py
 
 Writes Media/FiveSecond/*.tga (32-bit, uncompressed, top-left origin, power-of-two) and Media/fivesecond-preview.png
-(idle, filling at 40%, burning, burning without flames), composited the way the client blends them.
+(idle, filling at 40%, burning, burning without the flame; each at 150 px and 32 px), composited the way the client blends them.
 
 Everything tintable is white with the shape in the alpha channel: the widget colours it with SetVertexColor /
 SetSwipeColor. The track (dark ring) is the only coloured one.
@@ -26,7 +26,7 @@ GAP = 36.0         # visible gap at the top, degrees
 CAP = math.degrees(math.asin(W / RC))
 END = GAP / 2 + CAP  # arc end points, degrees from the top (round caps reach GAP/2)
 
-# Glow, flames: shown at twice the widget size, so the ring sits at half these radii.
+# Glow: shown at twice the widget size, so the ring sits at half these radii.
 G = 256
 GRC, GW = RC / 2, W / 2
 
@@ -121,49 +121,6 @@ def tongue(x, y, base, direction, length, width, wobble, bend):
     return body, core
 
 
-def flame_layers(shape, tongues, warp):
-    """Tongues on coordinates warped by noise, so the edges lick like gas fire. Returns (glow, core)."""
-    h, w = shape
-    x, y = grid(w, h)
-    x = x + noise(shape, 6) * warp
-    y = y + noise(shape, 6) * warp
-    body = np.zeros(shape)
-    core = np.zeros(shape)
-    for tg in tongues:
-        bd, c = tongue(x, y, **tg)
-        body = 1 - (1 - body) * (1 - bd * 0.85)
-        core = np.maximum(core, c)
-    glow = np.clip(body * 0.85 + 0.4 * blur(body, 6), 0, 1)
-    return glow, np.clip(core * 0.9, 0, 1)
-
-
-def ring_tongues(n, rc, count):
-    """Tongues all round the ring, licking out past its edge and leaning upwards (fire rises)."""
-    c = n / 2
-    out = []
-    for i in range(count):
-        a = math.radians(360 * (i + RNG.uniform(0.2, 0.8)) / count)
-        radial = np.array([math.sin(a), -math.cos(a)])
-        up = 0.9 if radial[1] > 0 else 0.55          # under the ring they curl up round it
-        direction = radial + np.array([0, -up])
-        out.append(dict(base=(c + rc * radial[0], c + rc * radial[1]), direction=direction,
-                        length=RNG.uniform(24, 42) * (1.15 if radial[1] < -0.3 else 0.85), width=RNG.uniform(9, 13),
-                        wobble=RNG.uniform(-5, 5), bend=RNG.uniform(-0.25, 0.25)))
-    return out
-
-
-def plume_tongues(cw, ch):
-    """Fire rising from the ring's centre (cell bottom) up through the gap and above it."""
-    base_y = ch - 30
-    out = [dict(base=(cw / 2 + RNG.uniform(-2, 2), base_y), direction=(RNG.uniform(-0.08, 0.08), -1),
-                length=ch * RNG.uniform(0.68, 0.8), width=cw * 0.2, wobble=RNG.uniform(-12, 12), bend=RNG.uniform(-0.15, 0.15))]
-    for side in (-1, 1):
-        out.append(dict(base=(cw / 2 + side * cw * 0.08, base_y - 6), direction=(side * RNG.uniform(0.08, 0.22), -1),
-                        length=ch * RNG.uniform(0.4, 0.55), width=cw * 0.13, wobble=RNG.uniform(-8, 8),
-                        bend=side * RNG.uniform(0, 0.25)))
-    return out
-
-
 # ----------------------------------------------------------------------------------------------------------------
 # textures
 # ----------------------------------------------------------------------------------------------------------------
@@ -208,53 +165,65 @@ def make_glow():
     sdf, _, _ = arc_sdf(G, GRC, GW, END)
     ring = cov(sdf)
     halo = 0.9 * blur(ring, 4.5) / max(blur(ring, 4.5).max(), 1e-6) + 0.45 * blur(ring, 15) / max(blur(ring, 15).max(), 1e-6)
-    # a soft plume rising out of the gap, like a flame
     x, y = grid(G)
     c = G / 2
-    py = c - GRC - 10
-    plume = np.exp(-(((x - c) / 9.0) ** 2 + ((y - py) / 22.0) ** 2)) * np.clip((c - GRC + 6 - y) / 12, 0, 1)
-    a = np.clip(halo * 0.75 + plume * 0.55, 0, 1)
+    a = np.clip(halo * 0.75, 0, 1)
     # fade out well before the edge (no square corners)
     r = np.hypot(x - c, y - c)
     a *= np.clip((G / 2 - 2 - r) / 18, 0, 1)
     return white(a)
 
 
-def make_flames():
-    """2x2 sheet of 256 px cells, each fire all round the ring (four variations to crossfade)."""
-    glow = np.zeros((512, 512))
-    core = np.zeros((512, 512))
-    x, y = grid(256)
-    fade = np.clip((128 - 4 - np.hypot(x - 128, y - 128)) / 14, 0, 1)
-    for i in range(4):
-        g, k = flame_layers((256, 256), ring_tongues(256, GRC + GW * 0.3, 10), 4.5)
-        cy, cx = divmod(i, 2)
-        glow[cy * 256:(cy + 1) * 256, cx * 256:(cx + 1) * 256] = g * fade
-        core[cy * 256:(cy + 1) * 256, cx * 256:(cx + 1) * 256] = k * fade * 0.7
+# The flame: one soft, rounded flame rising from low in the ring up out of the gap. Shown 0.6 x 1.2 of the widget,
+# its foot FLAME_FOOT below the centre. Two cells side by side (a slightly different lean and height): the widget
+# crossfades them slowly, so the flame seems to breathe and sway without anything jumping.
+FLAME_W, FLAME_H, FLAME_FOOT = 0.6, 1.2, 0.3
+
+
+def flame_shape(cw, ch, lean, height, belly):
+    x, y = grid(cw, ch)
+    base_y = ch - (FLAME_FOOT - 0.16) / FLAME_H * ch      # foot of the flame, 0.16 below the ring's centre
+    tip_y = ch - (FLAME_FOOT + 0.6 * height) / FLAME_H * ch
+    h = base_y - tip_y
+    t = np.clip((base_y - y) / h, 0, 1)
+    sway = lean * cw * t ** 2
+    wb = belly * cw
+    width = wb * np.sqrt(np.clip(t * 3.0, 0, 1)) * (1 - t) ** 0.6 * (1 + 0.5 * (1 - t))
+    below = np.exp(-np.clip(y - base_y, 0, None) ** 2 / (2 * (wb * 0.25) ** 2))
+    body = np.exp(-((x - cw / 2 - sway) / np.maximum(width, 0.6)) ** 2 * 1.3) * below * (1 - t ** 3)
+    body = blur(body, 3.2)
+    ct = np.clip((base_y - 6 - y) / (h * 0.55), 0, 1)
+    cwid = wb * 0.5 * np.sqrt(np.clip(ct * 3, 0, 1)) * (1 - ct) ** 0.6
+    core = np.exp(-((x - cw / 2 - sway * 0.6) / np.maximum(cwid, 0.6)) ** 2 * 1.5) * (y <= base_y - 2) * (1 - ct ** 3)
+    core = blur(core, 3.0) * 0.8
+    glow = np.clip(body * 0.8 + 0.5 * blur(body, 9), 0, 1)
+    fade = np.clip((x - 2) / 14, 0, 1) * np.clip((cw - 2 - x) / 14, 0, 1) * np.clip((y - 2) / 14, 0, 1) * np.clip((ch - 2 - y) / 10, 0, 1)
+    return glow * fade, np.clip(core * 0.95, 0, 1) * fade
+
+
+def make_flame():
+    glow = np.zeros((256, 256))
+    core = np.zeros((256, 256))
+    for i, (lean, height, belly) in enumerate(((-0.025, 1.0, 0.3), (0.035, 0.94, 0.31))):
+        g, k = flame_shape(128, 256, lean, height, belly)
+        glow[:, i * 128:(i + 1) * 128] = g
+        core[:, i * 128:(i + 1) * 128] = k
     return white(glow), white(core)
 
 
-def make_plume():
-    """4 cells of 128x256 side by side: fire rising from the centre out through the gap."""
-    glow = np.zeros((256, 512))
-    core = np.zeros((256, 512))
-    x, y = grid(128, 256)
-    fade = np.clip((x - 3) / 16, 0, 1) * np.clip((125 - x) / 16, 0, 1) * np.clip((y - 3) / 26, 0, 1)
-    fade *= np.clip((254 - y) / 20, 0, 1)
-    for i in range(4):
-        g, k = flame_layers((256, 128), plume_tongues(128, 256), 5.0)
-        glow[:, i * 128:(i + 1) * 128] = g * fade
-        core[:, i * 128:(i + 1) * 128] = k * fade
-    return white(glow), white(core)
-
-
-def make_ember():
-    """The fire's source in the ring's middle: a white-hot centre in a soft glow (the widget tints a second copy)."""
-    x, y = grid(128)
-    r = np.hypot(x - 64, y - 64)
-    a = 0.9 * np.exp(-(r / 9) ** 2) + 0.45 * np.exp(-(r / 22) ** 2)
-    a *= np.clip((62 - r) / 10, 0, 1)
-    return white(a)
+def save_png(img, path):
+    """Save, retrying while an image viewer holds the file; else beside it as .new.png."""
+    import time
+    for _ in range(10):
+        try:
+            img.save(path)
+            return path
+        except OSError:
+            time.sleep(0.5)
+    alt = path[:-4] + ".new.png"
+    img.save(alt)
+    print("in use, saved as", alt)
+    return alt
 
 
 # ----------------------------------------------------------------------------------------------------------------
@@ -317,51 +286,50 @@ def cell(sheet, col, row, cw, ch):
 
 
 def preview(tex):
-    S = 150
-    PW, PH = 380, 440
-    labels = ["Idle (full mana)", "Filling: 2 of 5 s", "Burning: mana coming back", "Burning, calm mode (no flames)"]
+    """Each state at 150 px, and below it at the real default size (32 px)."""
+    S, SMALL = 150, 32
+    PW, PH = 380, 400
+    labels = ["Idle (full mana)", "Filling: 2 of 5 s", "Burning: mana coming back", "Burning, no flame"]
     img = np.zeros((PH, PW * 4, 3))
     yy = np.linspace(0, 1, PH)[:, None, None]
     img[...] = (np.array([27, 33, 44]) / 255) * (1 - yy) + (np.array([10, 12, 17]) / 255) * yy
-    img += RNG.normal(0, 0.006, img.shape)
 
     track = resized(tex["track"], S, S)
     fill = resized(tex["fill"], S, S)
     core = resized(tex["core"], S, S)
     glow = resized(tex["glow"], 2 * S, 2 * S)
-    fl_g = [resized(cell(tex["flames_glow"], i % 2, i // 2, 256, 256), 2 * S, 2 * S) for i in range(4)]
-    fl_c = [resized(cell(tex["flames_core"], i % 2, i // 2, 256, 256), 2 * S, 2 * S) for i in range(4)]
-    pl_g = [resized(cell(tex["plume_glow"], i, 0, 128, 256), int(S * 0.6), int(S * 1.2)) for i in range(4)]
-    pl_c = [resized(cell(tex["plume_core"], i, 0, 128, 256), int(S * 0.6), int(S * 1.2)) for i in range(4)]
-    ember = resized(tex["ember"], S, S)
+    fw, fh = int(S * FLAME_W), int(S * FLAME_H)
+    fl_g = [resized(cell(tex["flame_glow"], i, 0, 128, 256), fw, fh) for i in range(2)]
+    fl_c = [resized(cell(tex["flame_core"], i, 0, 128, 256), fw, fh) for i in range(2)]
 
+    cy = 230
     for p in range(4):
-        cx, cy = PW * p + PW / 2, 250
-        panel = img
-        place(panel, track, cx, cy)
+        cx = PW * p + PW / 2
+        place(img, track, cx, cy)
         if p == 0:
-            place(panel, fill, cx, cy, FILL, 0.22)
+            place(img, fill, cx, cy, FILL, 0.22)
         elif p == 1:
-            place(panel, swipe(fill, 0.4), cx, cy, FILL, 1.0)
+            place(img, swipe(fill, 0.4), cx, cy, FILL, 1.0)
         else:
-            place(panel, glow, cx, cy, BURN, 0.95, "add")
-            place(panel, fill, cx, cy, BURN, 1.0)
-            place(panel, core, cx, cy, (1, 1, 1), 0.75, "add")
-            place(panel, core, cx, cy, BURN, 0.5, "add")
+            place(img, glow, cx, cy, BURN, 0.95, "add")
+            place(img, fill, cx, cy, BURN, 1.0)
+            place(img, core, cx, cy, (1, 1, 1), 0.75, "add")
+            place(img, core, cx, cy, BURN, 0.5, "add")
             if p == 2:
-                # fire wrapping the ring (two variations mid-crossfade), rising from the centre through the gap
-                for i, a in ((0, 0.75), (2, 0.5)):
-                    place(panel, fl_g[i], cx, cy, BURN, a, "add")
-                    place(panel, fl_c[i], cx, cy, (0.8, 0.93, 1), a, "add")
-                for i, rise, a, dx in ((0, 0.03, 0.9, 0), (2, 0.1, 0.5, -0.04)):
-                    py = cy - 0.1 * S * -1 - S * 1.2 / 2 - rise * S
-                    place(panel, pl_g[i], cx + dx * S, py, BURN, a, "add")
-                    place(panel, pl_c[i], cx + dx * S, py, (0.8, 0.93, 1), a, "add")
-                place(panel, ember, cx, cy, BURN, 0.9, "add")
-                place(panel, ember, cx, cy, (1, 1, 1), 0.55, "add")
-            elif p == 3:
-                place(panel, ember, cx, cy, BURN, 0.6, "add")
-    out = Image.fromarray((np.clip(img, 0, 1) * 255 + 0.5).astype(np.uint8), "RGB")
+                fy = cy + FLAME_FOOT * S - fh / 2  # its foot below the centre
+                # the widget shows the first shape and fades the second in and out over it
+                for i, a in ((0, 1.0), (1, 0.4)):
+                    place(img, fl_g[i], cx, fy, BURN, 0.85 * a, "add")
+                    place(img, fl_c[i], cx, fy, (0.85, 0.95, 1), 0.8 * a, "add")
+    big = Image.fromarray((np.clip(img, 0, 1) * 255 + 0.5).astype(np.uint8), "RGB")
+    # the real size: the same panels scaled down, centred in a strip under each
+    strip_h = 90
+    out = Image.new("RGB", (PW * 4, PH + strip_h + 40), (10, 12, 17))
+    out.paste(big, (0, 0))
+    k = SMALL / S
+    for p in range(4):
+        tile = big.crop((PW * p, 0, PW * (p + 1), PH)).resize((int(PW * k), int(PH * k)), Image.LANCZOS)
+        out.paste(tile, (int(PW * p + PW / 2 - PW * k / 2), int(PH + 40 + strip_h / 2 - cy * k)))
     d = ImageDraw.Draw(out)
     try:
         font = ImageFont.truetype("C:/Windows/Fonts/segoeui.ttf", 20)
@@ -370,10 +338,10 @@ def preview(tex):
         font = small = ImageFont.load_default()
     for p, text in enumerate(labels):
         w = d.textlength(text, font=font)
-        d.text((PW * p + (PW - w) / 2, PH - 52), text, fill=(220, 228, 240), font=font)
-    sub = "Lattice: 5-second rule widget (shown at 150 px; default size in game is 64 px)"
-    d.text((16, 12), sub, fill=(140, 152, 170), font=small)
-    out.save(PREVIEW)
+        d.text((PW * p + (PW - w) / 2, PH - 48), text, fill=(220, 228, 240), font=font)
+    d.text((16, 12), "Lattice: 5-second rule ring at 150 px; below, the real default size (32 px)", fill=(140, 152, 170), font=small)
+    d.text((16, PH + 8), "32 px", fill=(120, 130, 148), font=small)
+    save_png(out, PREVIEW)
 
 
 def main():
@@ -384,9 +352,7 @@ def main():
         "core": make_core(),
         "glow": make_glow(),
     }
-    tex["flames_glow"], tex["flames_core"] = make_flames()
-    tex["plume_glow"], tex["plume_core"] = make_plume()
-    tex["ember"] = make_ember()
+    tex["flame_glow"], tex["flame_core"] = make_flame()
     for name, rgba in tex.items():
         save_tga(os.path.join(OUT, name + ".tga"), rgba)
     preview(tex)

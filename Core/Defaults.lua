@@ -76,8 +76,8 @@ ns.Defaults = {
 			regenColor = { 0.35, 0.90, 0.55, 1 },
 			-- the ring you place anywhere (Modules/FiveSecondWidget.lua): yours only, mana users only
 			widget = {
-				-- lightning: the flames (named before they were flames)
-				enabled = true, combatOnly = true, size = 64, hideIdle = true, mp5 = false, lightning = true,
+				-- lightning: the flame (named before it was a flame)
+				enabled = true, combatOnly = true, size = 32, hideIdle = true, mp5 = false, lightning = true,
 				fillColor = { 0.31, 0.71, 1.00, 1 },   -- #4fb4ff
 				burnColor = { 0.31, 0.71, 1.00, 1 },
 			},

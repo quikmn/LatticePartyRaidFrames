@@ -1455,12 +1455,12 @@ end
 
 step("5-second rule ring: defaults, built at login, small 5sR label, never takes the mouse", function()
 	local FW, W = ns.FiveSecondWidget, ns.db.appearance.fiveSecond.widget
-	check(W.enabled == true and W.combatOnly == true and W.size == 64 and W.hideIdle == true and W.lightning == true and W.mp5 == false,
-		"defaults: on, only in combat, 64 px, hidden at full mana, flames, no mp5")
+	check(W.enabled == true and W.combatOnly == true and W.size == 32 and W.hideIdle == true and W.lightning == true and W.mp5 == false,
+		"defaults: on, only in combat, 32 px, hidden at full mana, the flame, no mp5")
 	check(W.seconds == nil and ns.Defaults.appearance.fiveSecond.widget.seconds == nil, "the seconds number is still a setting")
 	local f = FW.frame
 	check(f and _G.LatticeFiveSecondRing == f, "the ring wasn't built")
-	check(FW.anchor:GetWidth() == 64 and FW.anchor:GetHeight() == 64, "size")
+	check(FW.anchor:GetWidth() == 32 and FW.anchor:GetHeight() == 32, "size")
 	check(FW.anchor.label:GetText() == "5sR", "label: " .. tostring(FW.anchor.label:GetText()))
 	check(f.text == nil, "a number in the middle")
 	check(not f:IsMouseEnabled() and not FW.anchor.overlay:IsShown(), "takes the mouse while locked")
@@ -1508,9 +1508,11 @@ step("5-second rule ring (not only in combat): idle -> filling -> burning -> idl
 	MOCK.units.player.power = 60
 	Later(5.05)
 	check(FW.state == "burn" and not f.cd:IsShown() and f.burn:IsShown() and f.halo:IsShown() and f.fire:IsShown(), "not burning after 5 s: " .. tostring(FW.state))
-	check(f.breathe:IsPlaying() and f.burn.shimmer:IsPlaying() and f.burn.glowing:IsPlaying(), "the glow and ember don't breathe")
-	for _, g in ipairs(f.fire.anims) do check(g:IsPlaying(), "flames not playing") end
-	check(#f.fire.flames >= 3 and #f.fire.plumes >= 3, "flames round the ring and a plume")
+	check(f.breathe:IsPlaying() and f.burn.shimmer:IsPlaying(), "the glow doesn't breathe")
+	for _, g in ipairs(f.fire.anims) do check(g:IsPlaying(), "the flame doesn't move") end
+	-- one flame in one place: slow smooth loops, nothing picked at random, nothing moved by Lua
+	check(f.fire.a and f.fire.b and #f.fire.anims == 3, "one flame (two shapes crossfading)")
+	for _, g in ipairs(f.fire.anims) do check(g:GetScript("OnLoop") == nil, "something changes the flame on each loop") end
 	check(f.fill:GetAlpha() == 1, "burning: full ring")
 	-- calm mode
 	W.lightning = false
@@ -1520,8 +1522,6 @@ step("5-second rule ring (not only in combat): idle -> filling -> burning -> idl
 	W.lightning = true
 	ns:ApplySettings("appearance")
 	check(f.fire:IsShown(), "flames back on")
-	-- the loop picks the next sprite (and mirrors it) without errors
-	for _, g in ipairs(f.fire.anims) do for _ = 1, 6 do g:GetScript("OnLoop")(g) end end
 	-- full: calms down to idle
 	MOCK.units.player.power = 100
 	MOCK.Fire("UNIT_POWER_UPDATE", "player", "MANA")
@@ -1717,8 +1717,11 @@ step("5-second rule ring: mp5, the frames' line off, other classes, death, size"
 	W.size = 96
 	W.fillColor = { 1, 0.5, 0, 1 }
 	ns:ApplySettings("appearance")
-	check(FW.anchor:GetWidth() == 96 and f.glow:GetWidth() == 192 and f.fire.flames[1]:GetWidth() == 192, "size not applied")
-	W.size, W.fillColor = 64, { 0.31, 0.71, 1.00, 1 }
+	check(FW.anchor:GetWidth() == 96 and f.glow:GetWidth() == 192 and math.abs(f.fire:GetWidth() - 96 * 0.6) < 1e-6, "size not applied")
+	W.size = 8
+	ns:ApplySettings("appearance")
+	check(FW.anchor:GetWidth() == 16, "below the smallest size")
+	W.size, W.fillColor = 32, { 0.31, 0.71, 1.00, 1 }
 	-- an old saved "seconds" choice is ignored and dropped
 	W.seconds = true
 	W.combatOnly = true
@@ -1768,6 +1771,41 @@ step("5-second rule ring: move and lock (on its own, with the frames, combat loc
 	check(ns.db.positions.fiveSecond.y == -140, "reset")
 end)
 
+step("5-second rule ring: never any countdown numbers", function()
+	local FW = ns.FiveSecondWidget
+	local cd = FW.frame.cd
+	check(rawget(cd, "noCooldownCount") and rawget(cd, "noCCC") and rawget(cd, "noOCC"), "text addons not told to skip it")
+	check(rawget(cd, "__hideNumbers") == true, "the game's numbers are on")
+	-- another addon turns them on: off again at once
+	cd:SetHideCountdownNumbers(false)
+	check(rawget(cd, "__hideNumbers") == true, "numbers turned back on by someone else")
+	rawset(cd, "__hideNumbers", false) -- flipped behind our back: every new fill turns them off again
+	FW.spentAt = nil
+	Fight(true)
+	Cast("player", 2050)
+	check(FW.state == "count" and rawget(cd, "__hideNumbers") == true, "a new fill doesn't hide the numbers")
+	check(cd:GetCountdownFontString():GetAlpha() == 0, "the countdown text can show")
+	rawset(cd, "__hideNumbers", false)
+	cd:Show()
+	check(rawget(cd, "__hideNumbers") == true, "showing the cooldown doesn't hide the numbers")
+	Fight(false)
+	Settle()
+end)
+
+step("5-second rule ring: the size halved (64 -> 32); a saved 64 becomes 32, other sizes stay", function()
+	local sv = { schema = 4, profiles = {
+		Old = { appearance = { fiveSecond = { widget = { size = 64 } } } },
+		Mine = { appearance = { fiveSecond = { widget = { size = 48 } } } },
+		Blank = {}, Odd = { appearance = { fiveSecond = "x" } },
+	}, chars = {} }
+	ns.Database:Migrate(sv)
+	check(sv.schema == ns.Database.SCHEMA, "schema not bumped")
+	check(sv.profiles.Old.appearance.fiveSecond.widget.size == nil, "a saved 64 stays 64")
+	check(sv.profiles.Mine.appearance.fiveSecond.widget.size == 48, "a size the player set changed")
+	ns.Util.FillDefaults(sv.profiles.Old, ns.Defaults)
+	check(sv.profiles.Old.appearance.fiveSecond.widget.size == 32, "not 32 after the upgrade")
+end)
+
 step("5-second rule ring: chat, help, settings button and search", function()
 	local W = ns.db.appearance.fiveSecond.widget
 	SlashCmdList.LATTICE("5sr widget off")
@@ -1785,7 +1823,7 @@ step("5-second rule ring: chat, help, settings button and search", function()
 	ns.app:HandleSlash("appearance.fiveSecond.widget.size 80")
 	MOCK.RunTimers()
 	check(W.size == 80 and ns.FiveSecondWidget.anchor:GetWidth() == 80, "chat setting for the size")
-	ns.app:HandleSlash("appearance.fiveSecond.widget.size 64")
+	ns.app:HandleSlash("appearance.fiveSecond.widget.size 32")
 	ns.app:HandleSlash("appearance.fiveSecond.widget.combatOnly off")
 	check(W.combatOnly == false, "chat setting for only in combat")
 	ns.app:HandleSlash("appearance.fiveSecond.widget.combatOnly on")
@@ -1818,7 +1856,7 @@ step("5-second rule ring: chat, help, settings button and search", function()
 	check(not labels["Seconds left in the middle"], "the seconds setting is still there")
 	labels = {}
 	for _, r in ipairs(O:Search("flame")) do labels[r.entry.info.label] = true end
-	check(labels["Flames while mana comes back"], "search 'flame' misses the flames switch")
+	check(labels["Flame while mana comes back"], "search 'flame' misses the flame switch")
 	labels = {}
 	for _, r in ipairs(O:Search("combat")) do labels[r.entry.info.label] = true end
 	check(labels["Only in combat"], "search 'combat' misses Only in combat")

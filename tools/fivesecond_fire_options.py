@@ -266,7 +266,7 @@ def main():
         sheet.paste(smallimg, (cx + PW + 10, cy + int(CY - CY * 64 / S)))
         d.text((cx + 14, cy + PH + 8), f"{letter}  {name}", fill=(225, 232, 244), font=font)
         d.text((cx + PW + 14, cy + PH - 24), "64 px", fill=(120, 130, 148), font=small)
-    sheet.save(OUT)
+    art.save_png(sheet, OUT)
     print("wrote", OUT)
 
 

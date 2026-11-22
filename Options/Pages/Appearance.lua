@@ -81,7 +81,7 @@ O:RegisterPage("appearance", "Appearance", nil, function(s)
 	}))
 
 	W.Header(s, "Mana: 5-second rule ring",
-		"Your own ring to place anywhere: it fills for the 5 seconds after you spend mana, then burns with blue fire while your mana comes back.",
+		"Your own ring to place anywhere: it fills for the 5 seconds after you spend mana, then a gentle blue flame burns in it while your mana comes back.",
 		{ "5sr", "five second rule", "mana", "regen", "widget", "spirit", "ring", "weak aura", "fire", "flame" })
 	local RING_KEYS = { "5sr", "five second rule", "mana", "regen", "widget", "spirit", "ring" }
 	local function R() return A().fiveSecond.widget end
@@ -106,7 +106,7 @@ O:RegisterPage("appearance", "Appearance", nil, function(s)
 		desc = "Shows when a fight starts and fades out when it ends. In combat it always shows.",
 	}))
 	W.Slider(s, Bind("appearance.fiveSecond.widget.size", "appearance", {
-		label = "Ring size", keywords = { "scale", "5sr", "ring", "widget" }, min = 32, max = 160, step = 4, disabled = noRing,
+		label = "Ring size", keywords = { "scale", "5sr", "ring", "widget" }, min = 16, max = 160, step = 2, disabled = noRing,
 	}))
 	W.Toggle(s, Bind("appearance.fiveSecond.widget.hideIdle", "appearance", {
 		label = "Hide the ring at full mana", keywords = RING_KEYS,
@@ -114,8 +114,8 @@ O:RegisterPage("appearance", "Appearance", nil, function(s)
 		disabled = function() return noRing() or R().combatOnly end,
 	}))
 	W.Toggle(s, Bind("appearance.fiveSecond.widget.lightning", "appearance", {
-		label = "Flames while mana comes back", keywords = { "5sr", "ring", "effects", "calm", "animation", "fire", "flame", "flames" }, disabled = noRing,
-		desc = "Off: a calm glow only.",
+		label = "Flame while mana comes back", keywords = { "5sr", "ring", "effects", "calm", "animation", "fire", "flame", "flames" }, disabled = noRing,
+		desc = "A gentle blue flame in the ring. Off: the glow only.",
 	}))
 	W.Toggle(s, Bind("appearance.fiveSecond.widget.mp5", "appearance", {
 		label = "Mana regen (mp5) under the ring", keywords = { "5sr", "ring", "mp5", "mana per 5", "regen" }, disabled = noRing,

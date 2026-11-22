@@ -16,7 +16,7 @@ local U = ns.Util
 local DB = {}
 ns.Database = DB
 
-local SCHEMA = 4
+local SCHEMA = 5
 DB.DEFAULT_PROFILE = "Default"
 DB.SCHEMA = SCHEMA
 
@@ -42,6 +42,14 @@ local MIGRATIONS = {
 				if type(p.general) ~= "table" then p.general = {} end
 				if p.general.hoverCastSelf == nil then p.general.hoverCastSelf = false end
 			end
+		end
+	end,
+	[5] = function(sv)
+		-- the 5-second rule ring got half as big (64 -> 32 px): a profile that kept the old size takes the new one
+		for _, p in pairs(sv.profiles or {}) do
+			local w = type(p) == "table" and type(p.appearance) == "table" and type(p.appearance.fiveSecond) == "table"
+				and p.appearance.fiveSecond.widget
+			if type(w) == "table" and w.size == 64 then w.size = nil end
 		end
 	end,
 }

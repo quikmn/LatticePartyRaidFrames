@@ -191,6 +191,8 @@ function impl:EnableMouse(on) self.__mouse = on and true or false end
 function impl:IsMouseEnabled() return self.__mouse or false end
 function impl:SetCooldown(start, duration) self.__cd = { start, duration } end
 function impl:Clear() self.__cd = nil end
+function impl:SetHideCountdownNumbers(hide) self.__hideNumbers = hide end
+function impl:GetCountdownFontString() if not self.__cfs then self.__cfs = newWidget("FontString", nil, self) end return self.__cfs end
 function impl:GetRegions() return end
 function impl:SetSmoothedValue(v) self.__value = v end
 

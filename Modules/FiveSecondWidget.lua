@@ -1,8 +1,8 @@
 -- Lattice: the 5-second rule ring. A ring with a gap at the top (like a power button) that you can place anywhere.
 --
 --   filling  after you spend mana, blue fills the ring clockwise from the gap over the 5 seconds (no Spirit regen)
---   burning  the 5 seconds are over and mana is coming back: the ring glows, an ember burns in its middle, blue fire
---            rises from it out through the gap and wraps the ring (or a calm glow only, with flames off)
+--   burning  the 5 seconds are over and mana is coming back: the ring glows and one gentle blue flame burns in its
+--            middle, rising out through the gap, swaying and breathing slowly (or the glow only, with the flame off)
 --   idle     full mana: a dim ring
 --
 -- When it shows: always while being moved; always in combat (never hidden on a guess about full mana); out of combat
@@ -11,7 +11,7 @@
 --
 -- Spends come from Modules/FiveSecond.lua (FS:OnCast calls FW:OnSpend): no second detection here.
 -- Cost: nothing runs while idle. The fill is a Cooldown frame (drawn by the client); the end of the 5 seconds is one
--- C_Timer; burning is client-side AnimationGroups (a few tiny OnLoop calls per second pick the next flame sprite).
+-- C_Timer; burning is client-side AnimationGroups (slow, smooth loops; no Lua while they run).
 -- Mana is read only through secret-safe calls: when it is secret, the client fades the burning at full mana with a
 -- curve (the ring itself stays). Not a secure frame, so it never taints anything; mouse only while moving.
 local ADDON, ns = ...
@@ -32,8 +32,10 @@ FW.TURN, FW.LEAD = TURN, LEAD
 
 FW.LABEL = "5sR"         -- the ring's name on its move box
 local IDLE_ALPHA = 0.22  -- the dim ring at full mana
-local PLUME_BASE = -0.1  -- the plume's foot, x size from the centre (its fire starts in the middle of the ring)
-local PLUME_RISE = 0.12
+-- the flame texture: 0.6 x 1.2 of the ring's size, its foot 0.3 below the centre (tools/fivesecond_art.py)
+local FLAME_W, FLAME_H, FLAME_FOOT = 0.6, 1.2, 0.3
+local SWAY = 0.03        -- how far the flame sways, x size
+FW.MIN_SIZE, FW.MAX_SIZE = 16, 160
 local FADE_IN, FADE_OUT = 0.25, 0.6
 
 local function Settings() return ns.db and ns.db.appearance.fiveSecond.widget end
@@ -79,32 +81,6 @@ local function Fade(group, from, to, dur, order, delay)
 	return a
 end
 
--- A sprite: a glow layer (tinted) and a white-hot core layer, sharing texture coordinates.
-local function Sprite(parent, file)
-	local h = CreateFrame("Frame", nil, parent)
-	h.glow = Tex(h, file .. "_glow", "ARTWORK", 0, true)
-	h.glow:SetAllPoints()
-	h.core = Tex(h, file .. "_core", "ARTWORK", 1, true)
-	h.core:SetAllPoints()
-	h:SetAlpha(0)
-	return h
-end
-
--- cells: list of { left, right, top, bottom }; a random one (sometimes mirrored) on each loop.
-local function PickCell(h, cells)
-	local c = cells[math.random(#cells)]
-	local l, r = c[1], c[2]
-	if math.random() < 0.5 then l, r = r, l end
-	h.glow:SetTexCoord(l, r, c[3], c[4])
-	h.core:SetTexCoord(l, r, c[3], c[4])
-end
-
-local FLAME_CELLS = { { 0, 0.5, 0, 0.5 }, { 0.5, 1, 0, 0.5 }, { 0, 0.5, 0.5, 1 }, { 0.5, 1, 0.5, 1 } }
-local PLUME_CELLS = { { 0, 0.25, 0, 1 }, { 0.25, 0.5, 0, 1 }, { 0.5, 0.75, 0, 1 }, { 0.75, 1, 0, 1 } }
--- different periods, so the flicker never falls into a pattern; together they always cover the ring
-local FLAME_TIME = { 1.1, 1.45, 1.8 }
-local PLUME_TIME = { 1.0, 1.25, 1.55 }
-
 function FW:Build()
 	if self.frame then return self.frame end
 	-- not a secure frame: placed at once, even in combat (a /reload mid-fight)
@@ -137,13 +113,13 @@ function FW:Build()
 		return l
 	end
 
-	-- burning: a soft halo (with a plume rising out of the gap), breathing
+	-- burning: a soft halo round the ring, breathing slowly
 	f.halo = Layer(f, 0)
 	f.glow = Tex(f.halo, "glow", "BACKGROUND", 0, true)
 	f.glow:SetPoint("CENTER", f, "CENTER")
 	f.breathe = f.glow:CreateAnimationGroup()
 	f.breathe:SetLooping("BOUNCE")
-	Fade(f.breathe, 1, 0.55, 1.2):SetSmoothing("IN_OUT")
+	Fade(f.breathe, 1, 0.6, 2.2):SetSmoothing("IN_OUT")
 	f.halo:Hide()
 
 	local ring = Layer(f, 1)
@@ -163,9 +139,16 @@ function FW:Build()
 	cd:SetReverse(true)
 	cd:SetDrawEdge(false)
 	if cd.SetDrawBling then cd:SetDrawBling(false) end
-	if cd.SetHideCountdownNumbers then cd:SetHideCountdownNumbers(true) end
-	cd:Hide()
 	f.cd = cd
+	-- and never the game's own numbers, whoever turns them on (some addons do): forced off again at once
+	FW.NoNumbers(cd)
+	if cd.SetHideCountdownNumbers then
+		hooksecurefunc(cd, "SetHideCountdownNumbers", function(self, hide)
+			if not hide then FW.NoNumbers(self) end
+		end)
+	end
+	cd:HookScript("OnShow", FW.NoNumbers)
+	cd:Hide()
 
 	-- burning: everything above the ring
 	local burn = Layer(f, 3)
@@ -175,58 +158,41 @@ function FW:Build()
 	burn.tint:SetAllPoints()
 	burn.shimmer = burn.core:CreateAnimationGroup()
 	burn.shimmer:SetLooping("BOUNCE")
-	Fade(burn.shimmer, 0.85, 0.55, 0.45):SetSmoothing("IN_OUT")
-	-- the ember in the middle: where the fire comes from
-	burn.ember = Layer(burn, 1)
-	burn.emberGlow = Tex(burn.ember, "ember", "ARTWORK", 2, true)
-	burn.emberGlow:SetAllPoints()
-	burn.emberCore = Tex(burn.ember, "ember", "ARTWORK", 3, true)
-	burn.emberCore:SetPoint("CENTER")
-	burn.glowing = burn.emberGlow:CreateAnimationGroup()
-	burn.glowing:SetLooping("BOUNCE")
-	Fade(burn.glowing, 1, 0.65, 0.7):SetSmoothing("IN_OUT")
+	Fade(burn.shimmer, 0.85, 0.65, 1.8):SetSmoothing("IN_OUT")
 	burn:Hide()
 	f.burn = burn
 
-	-- blue fire: flames wrapping the ring, and a plume rising from the ember out through the gap
+	-- the flame: always in the same place. Two shapes on top of each other, the second fading slowly in and out, and
+	-- the pair swaying a little from side to side. Slow, smooth loops only: nothing random, nothing jumps.
 	local fire = CreateFrame("Frame", nil, burn)
-	fire:SetAllPoints()
-	fire:SetFrameLevel(L + 3)
-	fire.anims, fire.flames, fire.plumes = {}, {}, {}
-	for i = 1, #FLAME_TIME do
-		local h = Sprite(fire, "flames")
-		h:SetPoint("CENTER", f, "CENTER")
-		local g = h:CreateAnimationGroup()
-		g:SetLooping("REPEAT")
-		local T = FLAME_TIME[i]
-		Fade(g, 0, 0.9, T * 0.4, 1)
-		Fade(g, 0.9, 0, T * 0.6, 2)
-		h.lick = g:CreateAnimation("Translation")
-		h.lick:SetDuration(T)
-		h.lick:SetOrder(1)
-		g:SetScript("OnLoop", function() PickCell(h, FLAME_CELLS) end)
-		PickCell(h, FLAME_CELLS)
-		fire.flames[i] = h
-		fire.anims[#fire.anims + 1] = g
+	fire:SetFrameLevel(L + 4)
+	fire.anims = {}
+	local function Shape(left, right)
+		local h = CreateFrame("Frame", nil, fire)
+		h:SetAllPoints()
+		h.glow = Tex(h, "flame_glow", "ARTWORK", 0, true)
+		h.glow:SetAllPoints()
+		h.glow:SetTexCoord(left, right, 0, 1)
+		h.core = Tex(h, "flame_core", "ARTWORK", 1, true)
+		h.core:SetAllPoints()
+		h.core:SetTexCoord(left, right, 0, 1)
+		return h
 	end
-	for i = 1, #PLUME_TIME do
-		local h = Sprite(fire, "plume")
-		local g = h:CreateAnimationGroup()
-		g:SetLooping("REPEAT")
-		local T = PLUME_TIME[i]
-		h.rise = g:CreateAnimation("Translation")
-		h.rise:SetDuration(T)
-		h.rise:SetOrder(1)
-		Fade(g, 0, 1, T * 0.25, 1)
-		Fade(g, 1, 0, T * 0.55, 1, T * 0.4)
-		g:SetScript("OnLoop", function()
-			PickCell(h, PLUME_CELLS)
-			FW:PlacePlume(h, (math.random() - 0.5) * 0.1)
-		end)
-		PickCell(h, PLUME_CELLS)
-		fire.plumes[i] = h
-		fire.anims[#fire.anims + 1] = g
-	end
+	fire.a = Shape(0, 0.5)
+	fire.b = Shape(0.5, 1)
+	fire.b:SetAlpha(0)
+	local morph = fire.b:CreateAnimationGroup()      -- the second shape comes and goes: the flame breathes
+	morph:SetLooping("BOUNCE")
+	Fade(morph, 0, 1, 2.2):SetSmoothing("IN_OUT")
+	local glow = fire.a.core:CreateAnimationGroup()  -- the hot middle glows a little brighter and back
+	glow:SetLooping("BOUNCE")
+	Fade(glow, 1, 0.75, 1.7):SetSmoothing("IN_OUT")
+	local sway = fire:CreateAnimationGroup()          -- and the whole flame sways, slowly
+	sway:SetLooping("BOUNCE")
+	fire.sway = sway:CreateAnimation("Translation")
+	fire.sway:SetDuration(2.4)
+	fire.sway:SetSmoothing("IN_OUT")
+	fire.anims = { morph, glow, sway }
 	fire:Hide()
 	f.fire = fire
 
@@ -238,10 +204,12 @@ function FW:Build()
 	return f
 end
 
-function FW:PlacePlume(h, dx)
-	local size = Settings().size
-	h:ClearAllPoints()
-	h:SetPoint("BOTTOM", self.frame, "CENTER", (dx or 0) * size, PLUME_BASE * size)
+-- No countdown numbers on the ring, ever: the game's own off, and the text addons' flags set.
+function FW.NoNumbers(cd)
+	cd.noCooldownCount, cd.noCCC, cd.noOCC = true, true, true
+	if cd.SetHideCountdownNumbers then cd:SetHideCountdownNumbers(true) end
+	local fs = cd.GetCountdownFontString and cd:GetCountdownFontString()
+	if fs then fs:SetAlpha(0) end
 end
 
 ------------------------------------------------------------------------
@@ -252,21 +220,15 @@ function FW:Apply()
 	if not C then return end
 	C.seconds = nil -- the number in the middle is gone; a saved choice means nothing now
 	local f = self:Build()
-	local size = math.max(24, math.min(256, tonumber(C.size) or 64))
+	local size = math.max(FW.MIN_SIZE, math.min(FW.MAX_SIZE, tonumber(C.size) or 32))
 	self.anchor:SetSize(size, size)
 	-- the name on the move box: small, at the bottom
 	U.SetFont(self.anchor.label, math.max(8, math.floor(size * 0.12 + 0.5)), "OUTLINE")
 	f.glow:SetSize(size * 2, size * 2)
-	f.burn.emberCore:SetSize(size * 0.45, size * 0.45)
-	for _, h in ipairs(f.fire.flames) do
-		h:SetSize(size * 2, size * 2)
-		h.lick:SetOffset(0, size * 0.04)
-	end
-	for _, h in ipairs(f.fire.plumes) do
-		h:SetSize(size * 0.6, size * 1.2)
-		h.rise:SetOffset(0, size * PLUME_RISE)
-		self:PlacePlume(h, 0)
-	end
+	f.fire:SetSize(size * FLAME_W, size * FLAME_H)
+	f.fire:ClearAllPoints()
+	f.fire:SetPoint("BOTTOM", f, "CENTER", -size * SWAY / 2, -size * FLAME_FOOT)
+	f.fire.sway:SetOffset(size * SWAY, 0)
 	U.SetFont(f.mp5, math.max(8, math.floor(size * 0.16 + 0.5)), "OUTLINE")
 
 	local fr, fg, fb = rgb(C.fillColor)
@@ -276,13 +238,9 @@ function FW:Apply()
 	f.glow:SetVertexColor(br, bg, bb, 0.95)
 	f.burn.core:SetVertexColor(1, 1, 1, 0.75)
 	f.burn.tint:SetVertexColor(br, bg, bb, 0.5)
-	f.burn.emberGlow:SetVertexColor(br, bg, bb, 0.9)
-	f.burn.emberCore:SetVertexColor(1, 1, 1, 0.6)
-	for _, list in ipairs({ f.fire.flames, f.fire.plumes }) do
-		for _, h in ipairs(list) do
-			h.glow:SetVertexColor(br, bg, bb, 0.95)
-			h.core:SetVertexColor(hr, hg, hb, 0.9)
-		end
+	for _, h in ipairs({ f.fire.a, f.fire.b }) do
+		h.glow:SetVertexColor(br, bg, bb, 0.85)
+		h.core:SetVertexColor(hr, hg, hb, 0.8)
 	end
 	self.restyle = true -- redraw with the new look
 	self.combat = self.combat or InCombatLockdown()
@@ -372,7 +330,6 @@ end
 local function StopBurn(f)
 	f.breathe:Stop()
 	f.burn.shimmer:Stop()
-	f.burn.glowing:Stop()
 	for _, g in ipairs(f.fire.anims) do g:Stop() end
 	f.fire:Hide()
 	f.burn:Hide()
@@ -436,6 +393,7 @@ function FW:Show(state, arg)
 		if self.cdStart ~= self.spentAt then
 			self.cdStart = self.spentAt
 			f.cd:SetCooldown(self.spentAt - LEAD, TURN)
+			FW.NoNumbers(f.cd)
 		end
 		f.cd:Show()
 		ShowMp5(f, C, true)
@@ -460,8 +418,7 @@ function FW:Show(state, arg)
 	f.burn:Show()
 	if not f.breathe:IsPlaying() then f.breathe:Play() end
 	if not f.burn.shimmer:IsPlaying() then f.burn.shimmer:Play() end
-	if not f.burn.glowing:IsPlaying() then f.burn.glowing:Play() end
-	if C.lightning then -- the flames (saved under its first name)
+	if C.lightning then -- the flame (saved under its first name)
 		if not f.fire:IsShown() then
 			f.fire:Show()
 			for _, g in ipairs(f.fire.anims) do g:Play() end
