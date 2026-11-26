@@ -61,6 +61,8 @@ end
 function H:Create()
 	local partyAnchor = ns.Mover:GetAnchor("party", "Party")
 	local raidAnchor = ns.Mover:GetAnchor("raid", "Raid")
+	partyAnchor.wanted = function() return not ns.Mover:RaidInUse() end
+	raidAnchor.wanted = function() return ns.Mover:RaidInUse() end
 
 	self.party = NewHeader("LatticePartyHeader", partyAnchor)
 	Precreate(self.party, 5)

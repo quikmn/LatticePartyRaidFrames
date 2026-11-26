@@ -49,8 +49,10 @@ ns.Defaults = {
 	},
 
 	positions = {
-		party = { point = "TOPLEFT", relPoint = "TOPLEFT", x = 30, y = -220 },
-		raid  = { point = "TOPLEFT", relPoint = "TOPLEFT", x = 30, y = -220 },
+		-- below the tanks box (60 + 4 rows), so unlocked boxes don't overlap; party and raid share the spot, only
+		-- one of them shows at a time
+		party = { point = "TOPLEFT", relPoint = "TOPLEFT", x = 30, y = -240 },
+		raid  = { point = "TOPLEFT", relPoint = "TOPLEFT", x = 30, y = -240 },
 		pets  = { point = "TOPLEFT", relPoint = "TOPLEFT", x = 30, y = -520 },
 		tanks = { point = "TOPLEFT", relPoint = "TOPLEFT", x = 30, y = -60 },
 		fiveSecond = { point = "CENTER", relPoint = "CENTER", x = 0, y = -140 }, -- the 5Sr bar

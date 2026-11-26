@@ -1,5 +1,11 @@
 # Lattice Party & Raid Frames
 
+## Unreleased
+- The 5Sr bar shows "5Sr" once while you move it, not twice.
+- Unlock frames: the boxes no longer sit on top of each other. Party and raid frames share a spot, so only the box of the one in use shows (pick a raid size in the preview to move the raid frames). If you never moved them, the party and raid frames now sit a little lower, under the Tanks box.
+- Hover-casting: each key shows its spell on one line and who it lands on under it, and long keys wrap, so nothing is cut off.
+- Settings search: the sidebar lights the page of the top result while you search.
+
 ## v0.10.0 (2026-11-22)
 - New: the 5Sr bar, a thin bar you can place anywhere. After you spend mana it counts up over the 5 seconds; then it turns bright and shows your mp5 while your mana comes back. It shows in combat and fades out after (turn off "Only in combat" to keep it up). Width, height, colours and the mp5 text on the Appearance page. Move it with Unlock frames or `/lattice 5sr move`; `/lattice 5sr widget off` turns it off.
 

@@ -1461,7 +1461,8 @@ step("5Sr bar: defaults, built at login, label, never takes the mouse, no number
 	local f = FW.frame
 	check(f and _G.LatticeFiveSecondBar == f, "the bar wasn't built")
 	check(FW.anchor:GetWidth() == 120 and FW.anchor:GetHeight() == 10, "size")
-	check(f.label:GetText() == "5Sr" and FW.anchor.label:GetText() == "5Sr", "label: " .. tostring(f.label:GetText()))
+	-- one "5Sr", beside the bar: the move box adds none of its own (it showed twice while moving)
+	check(f.label:GetText() == "5Sr" and (FW.anchor.label:GetText() or "") == "" and not FW.anchor.label:IsShown(), "label: " .. tostring(f.label:GetText()))
 	check(not f:IsMouseEnabled() and not FW.anchor.overlay:IsShown(), "takes the mouse while locked")
 	-- no Cooldown frame (nothing can draw countdown numbers) and no text but the label and mp5
 	local function walk(w, fn)

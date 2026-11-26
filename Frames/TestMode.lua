@@ -245,6 +245,7 @@ function T:Start(size)
 	Arrange()
 	-- Hide the real frames while previewing so they don't overlap.
 	ns.Headers:SetPreviewHidden(true)
+	ns.Mover:RefreshOverlays()
 	ns:Fire("PreviewChanged", true)
 end
 
@@ -254,6 +255,7 @@ function T:Stop()
 	self.manual = false
 	if holder then holder:Hide() end
 	ns.Headers:SetPreviewHidden(false)
+	ns.Mover:RefreshOverlays()
 	if was then ns:Fire("PreviewChanged", false) end
 end
 
@@ -272,7 +274,7 @@ end
 
 function T:SetSize(n)
 	self.size = n
-	if active then Arrange() end
+	if active then Arrange(); ns.Mover:RefreshOverlays() end
 end
 
 function T:Relayout()

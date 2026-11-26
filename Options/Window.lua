@@ -79,8 +79,8 @@ local function CreateWindow()
 		b.text = W.Text(b, T.font, T.muted)
 		b.text:SetPoint("LEFT", 12, 0)
 		b.text:SetText(p.title)
-		b:SetScript("OnEnter", function(self) if currentPage ~= id then self.text:SetTextColor(rgba(T.text)) end end)
-		b:SetScript("OnLeave", function(self) if currentPage ~= id then self.text:SetTextColor(rgba(T.muted)) end end)
+		b:SetScript("OnEnter", function(self) if not self.bg:IsShown() then self.text:SetTextColor(rgba(T.text)) end end)
+		b:SetScript("OnLeave", function(self) if not self.bg:IsShown() then self.text:SetTextColor(rgba(T.muted)) end end)
 		b:SetScript("OnClick", function() Options:ShowPage(id) end)
 		f.navButtons[id] = b
 	end
@@ -178,6 +178,16 @@ local function DropPage(p)
 	p.scroll, p.stack, p.entries = nil, nil, nil
 end
 
+-- Light one page in the sidebar (nil: none).
+local function LightNav(id)
+	for pid, b in pairs(window.navButtons) do
+		local active = pid == id
+		b.bg:SetShown(active)
+		b.bar:SetShown(active)
+		b.text:SetTextColor(rgba(active and T.text or T.muted))
+	end
+end
+
 function Options:ShowPage(id)
 	if not window then return end
 	local p = pages[id]
@@ -185,12 +195,8 @@ function Options:ShowPage(id)
 	if search.on then self:StopSearch() end -- a page picked in the sidebar ends the search
 	for pid, other in pairs(pages) do
 		if other.scroll then other.scroll:SetShown(pid == id) end
-		local b = window.navButtons[pid]
-		local active = pid == id
-		b.bg:SetShown(active)
-		b.bar:SetShown(active)
-		b.text:SetTextColor(rgba(active and T.text or T.muted))
 	end
+	LightNav(id)
 	if not p.scroll then
 		BuildPage(p)
 	else
@@ -335,6 +341,9 @@ function Options:Search(text)
 	local entries = self:SearchEntries()
 	local results = Search.Match(entries, q, Listed)
 	self:ShowResults(results, q, entries)
+	-- the sidebar follows the results: the top result's page is lit, not the page you were on
+	local top = results[1] and results[1].entry and results[1].entry.page
+	LightNav(top and top.id or nil)
 	return results
 end
 
@@ -404,6 +413,7 @@ function Options:StopSearch()
 	self:ReturnBorrowed()
 	W.ClosePopup()
 	window.results:Hide()
+	LightNav(currentPage)
 	local p = currentPage and pages[currentPage]
 	if p and p.scroll then
 		p.stack:RefreshAll()

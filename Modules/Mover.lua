@@ -91,6 +91,13 @@ end
 
 function Mover:IsUnlocked() return unlocked end
 
+-- Party and raid frames share one spot and never show together: while unlocked only the box of the one in use
+-- shows (the preview's size, else whether you are in a raid), so the two boxes never sit on top of each other.
+function Mover:RaidInUse()
+	if ns.TestMode and ns.TestMode:IsActive() then return (ns.TestMode.size or 5) > 5 end
+	return IsInRaid and IsInRaid() and true or false
+end
+
 -- An anchor can say when it has nothing to move (a.wanted() false: its box stays hidden while unlocked).
 local function Wanted(a) return not a.wanted or a.wanted() and true or false end
 
@@ -162,4 +169,9 @@ ns:RegisterEvent("PLAYER_REGEN_DISABLED", function()
 		Mover:SetUnlocked(false, true)
 		ns:Print("Frames locked: combat started.")
 	end
+end)
+
+-- joining or leaving a raid while unlocked swaps the party box for the raid box
+ns:RegisterEvent("GROUP_ROSTER_UPDATE", function()
+	if unlocked then Mover:RefreshOverlays() end
 end)

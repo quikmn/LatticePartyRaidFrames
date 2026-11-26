@@ -51,23 +51,36 @@ O:RegisterPage("hovercast", "Hover-casting", nil, function(s)
 		local keyText = W.Text(row, T.font, T.accent)
 		keyText:SetPoint("LEFT", 10, 0)
 		keyText:SetWidth(120)
-		keyText:SetWordWrap(false)
+		-- a long key (Ctrl + Shift + Alt + a mouse button) takes two lines rather than "..."
+		keyText:SetWordWrap(true)
+		if keyText.SetMaxLines then keyText:SetMaxLines(2) end
+		keyText:SetJustifyH("LEFT")
 		keyText:SetText(HC.Describe(h.key))
 		local icon = row:CreateTexture(nil, "ARTWORK")
 		icon:SetSize(18, 18)
 		icon:SetPoint("LEFT", 134, 0)
 		icon:SetTexture(h.action == "spell" and CC.SpellIcon(h.value) or "Interface\\Icons\\INV_Misc_QuestionMark")
 		icon:SetShown(h.action == "spell")
+		-- the spell on top, who it lands on under it: long spell names and chains get the whole row
 		local what = W.Text(row, T.font, T.text)
-		what:SetPoint("LEFT", 158, 0)
+		what:SetPoint("TOPLEFT", 158, -6)
 		what:SetPoint("RIGHT", -90, 0)
 		what:SetWordWrap(false)
+		local who = W.Text(row, T.fontSmall + 1, T.muted)
+		who:SetPoint("TOPLEFT", what, "BOTTOMLEFT", 0, -3)
+		who:SetPoint("RIGHT", -90, 0)
+		who:SetWordWrap(false)
 		local desc = h.action == "spell" and (CC.SpellName(h.value) or ("Spell #" .. tostring(h.value))) or "Macro"
 		if h.action == "spell" then
 			local chain = { (h.side == "harm" and "enemy" or h.side == "any" and "anyone" or "friend") .. " under the mouse" }
 			if h.fallback ~= false then chain[#chain + 1] = "target" end
 			if h.self and h.side ~= "harm" then chain[#chain + 1] = "you" end
-			desc = desc .. "  |cff888888(" .. table.concat(chain, ", then ") .. ")|r"
+			local c = table.concat(chain, ", then ")
+			who:SetText(c:sub(1, 1):upper() .. c:sub(2))
+		else
+			what:ClearAllPoints()
+			what:SetPoint("LEFT", 158, 0)
+			what:SetPoint("RIGHT", -90, 0)
 		end
 		what:SetText(desc)
 		local del = W.Button(row, "Remove", function()
@@ -76,7 +89,7 @@ O:RegisterPage("hovercast", "Hover-casting", nil, function(s)
 		end, 76, "danger")
 		del:SetHeight(22)
 		del:SetPoint("RIGHT", -6, 0)
-		s:Add(row, 32, 4)
+		s:Add(row, h.action == "spell" and 40 or 32, 4)
 	end
 
 	W.Header(s, "Cast on me", "A friendly spell lands on you when nobody fitting is under the mouse and you have no fitting target.",

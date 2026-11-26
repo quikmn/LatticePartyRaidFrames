@@ -66,8 +66,9 @@ function FW:Build()
 	local anchor = ns.Mover:GetAnchor("fiveSecond", FW.LABEL, true)
 	anchor.wanted = function() return FW:Wanted() end
 	anchor:SetFrameStrata("MEDIUM")
-	anchor.label:SetText(FW.LABEL)
-	U.SetFont(anchor.label, 8, "OUTLINE")
+	-- the bar's own "5Sr" beside it names the box: no second one inside the thin bar while it is moved
+	anchor.label:SetText("")
+	anchor.label:Hide()
 	self.anchor = anchor
 
 	local f = CreateFrame("Frame", "LatticeFiveSecondBar", anchor)
