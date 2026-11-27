@@ -1,5 +1,8 @@
 # Lattice Party & Raid Frames
 
+## Unreleased
+- Whichever window you click now comes to the front.
+
 ## v0.10.1 (2026-11-26)
 - The 5Sr bar shows "5Sr" once while you move it, not twice.
 - Unlock frames: the boxes no longer sit on top of each other. Party and raid frames share a spot, so only the box of the one in use shows (pick a raid size in the preview to move the raid frames). If you never moved them, the party and raid frames now sit a little lower, under the Tanks box.
